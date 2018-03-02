@@ -1,0 +1,3 @@
+name: habitat-service-broker
+description: A chart for the OSB Habitat service broker
+version: 0.0.1
