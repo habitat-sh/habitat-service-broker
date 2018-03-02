@@ -1,4 +1,4 @@
-# Default values for the broker-skeleton
+# Default values for the habitat-broker 
 # Image to use
 image: kinvolk/habitat-service-broker:latest 
 # ImagePullPolicy; valid values are "IfNotPresent", "Never", and "Always"

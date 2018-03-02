@@ -62,7 +62,7 @@ func runWithContext(ctx context.Context) error {
 
 	addr := ":" + strconv.Itoa(options.Port)
 
-	businessLogic, err := broker.NewBusinessLogic(&options.Options)
+	brokerLogic, err := broker.NewBrokerLogic(&options.Options)
 	if err != nil {
 		return err
 	}
@@ -72,7 +72,7 @@ func runWithContext(ctx context.Context) error {
 	osbMetrics := metrics.New()
 	reg.MustRegister(osbMetrics)
 
-	api, err := rest.NewAPISurface(businessLogic, osbMetrics)
+	api, err := rest.NewAPISurface(brokerLogic, osbMetrics)
 	if err != nil {
 		return err
 	}

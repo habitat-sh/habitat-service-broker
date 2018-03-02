@@ -1,0 +1,8 @@
+apiVersion: servicecatalog.k8s.io/v1beta1
+kind: ServiceInstance
+metadata:
+  name: nginx-broker 
+  namespace: test-ns
+spec:
+  clusterServiceClassExternalName: nginx-habitat
+  clusterServicePlanExternalName: default

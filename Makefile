@@ -25,12 +25,21 @@ clean:
 	rm -f servicebroker
 	rm -f servicebroker-linux
 
+clean-helm:
+	helm del --purge habitat-service-broker
+	kubectl delete -f manifests/
+	helm del --purge redis
+	helm del --purge nginx
+
 push: image
 	$(SUDO_CMD) docker push "$(IMAGE):$(TAG)"
 
 deploy-helm: image
-	helm upgrade --install broker-skeleton --namespace broker-skeleton \
+	helm install --name habitat-service-broker --namespace habitat-broker \
 	charts/servicebroker \
 	--set image="$(IMAGE):$(TAG)",imagePullPolicy="$(PULL)"
+
+provision:
+	kubectl create -f manifests/
 
 .PHONY: build test linux image clean push deploy-helm
