@@ -25,11 +25,8 @@ clean:
 	rm -f servicebroker
 	rm -f servicebroker-linux
 
-clean-helm:
+clean-all: deprovision-redis deprovision-nginx
 	helm del --purge habitat-service-broker
-	kubectl delete -f manifests/
-	helm del --purge redis
-	helm del --purge nginx
 
 push: image
 	$(SUDO_CMD) docker push "$(IMAGE):$(TAG)"
@@ -39,7 +36,16 @@ deploy-helm: image
 	charts/servicebroker \
 	--set image="$(IMAGE):$(TAG)",imagePullPolicy="$(PULL)"
 
-provision:
-	kubectl create -f manifests/
+provision-redis:
+	kubectl create -f manifests/redis/
 
-.PHONY: build test linux image clean push deploy-helm
+provision-nginx:
+	kubectl create -f manifests/nginx/
+
+deprovision-redis:
+	kubectl delete -f manifests/redis
+
+deprovision-nginx:
+	kubectl delete -f manifests/nginx
+
+.PHONY: build test linux image clean clean-all push deploy-helm provision-redis provision-nginx deprovision-redis deprovision-nginx
