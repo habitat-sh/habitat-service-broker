@@ -120,7 +120,7 @@ services:
 	return response, nil
 }
 
-func (b *BusinessLogic) Provision(request *osb.ProvisionRequest, c *broker.RequestContext) (*osb.ProvisionResponse, error) {
+func (b *BrokerLogic) Provision(request *osb.ProvisionRequest, c *broker.RequestContext) (*osb.ProvisionResponse, error) {
 	b.Lock()
 	defer b.Unlock()
 
@@ -129,6 +129,23 @@ func (b *BusinessLogic) Provision(request *osb.ProvisionRequest, c *broker.Reque
 	if request.AcceptsIncomplete {
 		response.Async = b.async
 	}
+
+	fmt.Println("Started provisioning...")
+
+	hab, err := generateHabitatObject(request.PlanID)
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+
+	err = b.createHabitatResource(hab)
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+
+	// TODO: Figure out what else needs to be created here for each of the pre-packaged services.
+	// TODO: when statefulsets are merged into hab-operator, create a PV/PVC here as well.
 
 	return &response, nil
 }
