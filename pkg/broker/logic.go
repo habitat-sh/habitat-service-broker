@@ -1,37 +1,140 @@
+// Copyright (c) 2018 Chef Software Inc. and/or applicable contributors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package broker
 
 import (
+	"fmt"
 	"sync"
 
+	habv1beta1 "github.com/habitat-sh/habitat-operator/pkg/apis/habitat/v1beta1"
 	osb "github.com/pmorie/go-open-service-broker-client/v2"
 	"github.com/pmorie/osb-broker-lib/pkg/broker"
+	"gopkg.in/yaml.v2"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
-// NewBusinessLogic is a hook that is called with the Options the program is run with.
-func NewBusinessLogic(o *Options) (*BusinessLogic, error) {
-	return &BusinessLogic{
-		async: o.Async,
+// NewBrokerLogic is a hook that is called with the Options the program is run with.
+func NewBrokerLogic(o *Options, client *Client) (*BrokerLogic, error) {
+	return &BrokerLogic{
+		async:      o.Async,
+		KubeClient: client,
 	}, nil
 }
 
-// BusinessLogic provides an implementation of the broker.BusinessLogic
-// interface.
-type BusinessLogic struct {
+// BrokerLogic provides an implementation of the broker.BrokerLogic interface.
+type BrokerLogic struct {
 	// Indicates if the broker should handle the requests asynchronously.
 	async bool
 	// Synchronize go routines.
 	sync.RWMutex
+	KubeClient *Client
 }
 
-var _ broker.BusinessLogic = &BusinessLogic{}
+// Client stores all the information specfic to Kubernetes.
+type Client struct {
+	KubeClient kubernetes.Interface
+	Client     *rest.RESTClient
+}
 
-func (b *BusinessLogic) GetCatalog(c *broker.RequestContext) (*osb.CatalogResponse, error) {
+var _ broker.Interface = &BrokerLogic{}
+
+func (b *BrokerLogic) GetCatalog(c *broker.RequestContext) (*osb.CatalogResponse, error) {
 	response := &osb.CatalogResponse{}
+
+	// TODO (lilic): At some point move these at a more appropriate place.
+	data := `
+---
+services:
+- name: nginx-habitat
+  id: 1ac7de1d-d89a-41c7-b9a8-744f9256e375
+  description: Nginx packaged with Habitat
+  bindable: false
+  plan_updateable: false
+  metadata:
+    displayName: "Habitat Nginx service"
+    imageUrl: https://avatars2.githubusercontent.com/u/19862012?s=200&v=4
+  plans:
+  - name: default
+    id: 86064792-7ea2-467b-af93-ac9694d96d5b
+    description: The default plan for the Nginx Habitat service
+    free: true
+    schemas:
+      service_instance:
+        create:
+          "$schema": "http://json-schema.org/draft-04/schema"
+          "type": "object"
+          "title": "Parameters"
+          "properties":
+          - "name":
+              "title": "Some Name"
+              "type": "string"
+              "maxLength": 63
+              "default": "My Name"
+          - "color":
+              "title": "Color"
+              "type": "string"
+              "default": "Clear"
+              "enum":
+              - "Clear"
+              - "Beige"
+              - "Grey"
+- name: redis-habitat
+  id: 50e86479-4c66-4236-88fb-a1e61b4c9448 
+  description: Redis packaged with Habitat
+  bindable: false
+  plan_updateable: false
+  metadata:
+    displayName: "Habitat Redis service"
+    imageUrl: https://avatars2.githubusercontent.com/u/19862012?s=200&v=4
+  plans:
+  - name: default
+    id: 002341cf-f895-49f4-ba04-bb70291b895c
+    description: The default plan for the Redis Habitat example service
+    free: true
+    schemas:
+      service_instance:
+        create:
+          "$schema": "http://json-schema.org/draft-04/schema"
+          "type": "object"
+          "title": "Parameters"
+          "properties":
+          - "name":
+              "title": "Some Name"
+              "type": "string"
+              "maxLength": 63
+              "default": "My Name"
+          - "color":
+              "title": "Color"
+              "type": "string"
+              "default": "Clear"
+              "enum":
+              - "Clear"
+              - "Beige"
+              - "Grey"
+`
+
+	err := yaml.Unmarshal([]byte(data), &response)
+	if err != nil {
+		return nil, err
+	}
 
 	return response, nil
 }
 
-func (b *BusinessLogic) Provision(request *osb.ProvisionRequest, c *broker.RequestContext) (*osb.ProvisionResponse, error) {
+func (b *BrokerLogic) Provision(request *osb.ProvisionRequest, c *broker.RequestContext) (*osb.ProvisionResponse, error) {
 	b.Lock()
 	defer b.Unlock()
 
@@ -41,10 +144,20 @@ func (b *BusinessLogic) Provision(request *osb.ProvisionRequest, c *broker.Reque
 		response.Async = b.async
 	}
 
+	hab, err := generateHabitatObject(request.PlanID)
+	if err != nil {
+		return nil, err
+	}
+
+	err = b.createHabitatResource(hab)
+	if err != nil {
+		return nil, err
+	}
+
 	return &response, nil
 }
 
-func (b *BusinessLogic) Deprovision(request *osb.DeprovisionRequest, c *broker.RequestContext) (*osb.DeprovisionResponse, error) {
+func (b *BrokerLogic) Deprovision(request *osb.DeprovisionRequest, c *broker.RequestContext) (*osb.DeprovisionResponse, error) {
 	b.Lock()
 	defer b.Unlock()
 
@@ -54,14 +167,19 @@ func (b *BusinessLogic) Deprovision(request *osb.DeprovisionRequest, c *broker.R
 		response.Async = b.async
 	}
 
+	err := b.deleteResources(request.PlanID)
+	if err != nil {
+		return nil, err
+	}
+
 	return &response, nil
 }
 
-func (b *BusinessLogic) LastOperation(request *osb.LastOperationRequest, c *broker.RequestContext) (*osb.LastOperationResponse, error) {
+func (b *BrokerLogic) LastOperation(request *osb.LastOperationRequest, c *broker.RequestContext) (*osb.LastOperationResponse, error) {
 	return nil, nil
 }
 
-func (b *BusinessLogic) Bind(request *osb.BindRequest, c *broker.RequestContext) (*osb.BindResponse, error) {
+func (b *BrokerLogic) Bind(request *osb.BindRequest, c *broker.RequestContext) (*osb.BindResponse, error) {
 	b.Lock()
 	defer b.Unlock()
 
@@ -74,12 +192,11 @@ func (b *BusinessLogic) Bind(request *osb.BindRequest, c *broker.RequestContext)
 	return &response, nil
 }
 
-func (b *BusinessLogic) Unbind(request *osb.UnbindRequest, c *broker.RequestContext) (*osb.UnbindResponse, error) {
-	// Your unbind business logic goes here
+func (b *BrokerLogic) Unbind(request *osb.UnbindRequest, c *broker.RequestContext) (*osb.UnbindResponse, error) {
 	return &osb.UnbindResponse{}, nil
 }
 
-func (b *BusinessLogic) Update(request *osb.UpdateInstanceRequest, c *broker.RequestContext) (*osb.UpdateInstanceResponse, error) {
+func (b *BrokerLogic) Update(request *osb.UpdateInstanceRequest, c *broker.RequestContext) (*osb.UpdateInstanceResponse, error) {
 	response := osb.UpdateInstanceResponse{}
 	if request.AcceptsIncomplete {
 		response.Async = b.async
@@ -88,6 +205,59 @@ func (b *BusinessLogic) Update(request *osb.UpdateInstanceRequest, c *broker.Req
 	return &response, nil
 }
 
-func (b *BusinessLogic) ValidateBrokerAPIVersion(version string) error {
+func (b *BrokerLogic) ValidateBrokerAPIVersion(version string) error {
+	return nil
+}
+
+func generateHabitatObject(planID string) (*habv1beta1.Habitat, error) {
+	n, i, err := matchService(planID)
+	if err != nil {
+		return nil, err
+	}
+	// Generate Habitat object based on service.
+	hab := NewHabitat(n, i, 1) // TODO: Decide how many instances we should be running?
+
+	return hab, nil
+}
+
+func (b *BrokerLogic) deleteResources(planID string) error {
+	n, _, err := matchService(planID)
+	if err != nil {
+		return err
+	}
+
+	err = b.DeleteHabitat(n)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func matchService(planID string) (string, string, error) {
+	name := ""
+	image := ""
+
+	switch planID {
+	case "002341cf-f895-49f4-ba04-bb70291b895c":
+		name = "redis"
+		image = "kinvolk/osb-redis:latest" // TODO: find a better way than latest!
+	case "86064792-7ea2-467b-af93-ac9694d96d5b":
+		name = "nginx"
+		image = "kinvolk/osb-nginx:latest" // TODO: find a better way than latest!
+	case "":
+		return name, image, fmt.Errorf("PlanID could not be matched. PlanID was empty.")
+	default:
+		return nil, nil, fmt.Errorf("PlanID could not be matched. PlanID did not match existing PlanID.")
+	}
+
+	return name, image, nil
+}
+
+func (b *BrokerLogic) createHabitatResource(hab *habv1beta1.Habitat) error {
+	if err := b.CreateHabitat(hab); err != nil {
+		return err
+	}
+
 	return nil
 }

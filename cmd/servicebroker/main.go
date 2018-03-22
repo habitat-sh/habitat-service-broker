@@ -1,3 +1,17 @@
+// Copyright (c) 2018 Chef Software Inc. and/or applicable contributors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package main
 
 import (
@@ -13,10 +27,13 @@ import (
 	"github.com/kinvolk/habitat-service-broker/pkg/broker"
 
 	"github.com/golang/glog"
+	habclient "github.com/habitat-sh/habitat-operator/pkg/client"
 	"github.com/pmorie/osb-broker-lib/pkg/metrics"
 	"github.com/pmorie/osb-broker-lib/pkg/rest"
 	"github.com/pmorie/osb-broker-lib/pkg/server"
 	prom "github.com/prometheus/client_golang/prometheus"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 var options struct {
@@ -62,7 +79,12 @@ func runWithContext(ctx context.Context) error {
 
 	addr := ":" + strconv.Itoa(options.Port)
 
-	businessLogic, err := broker.NewBusinessLogic(&options.Options)
+	client, err := setupKubeClient()
+	if err != nil {
+		return err
+	}
+
+	brokerLogic, err := broker.NewBrokerLogic(&options.Options, client)
 	if err != nil {
 		return err
 	}
@@ -72,7 +94,7 @@ func runWithContext(ctx context.Context) error {
 	osbMetrics := metrics.New()
 	reg.MustRegister(osbMetrics)
 
-	api, err := rest.NewAPISurface(businessLogic, osbMetrics)
+	api, err := rest.NewAPISurface(brokerLogic, osbMetrics)
 	if err != nil {
 		return err
 	}
@@ -103,4 +125,28 @@ func cancelOnInterrupt(ctx context.Context, f context.CancelFunc) {
 			os.Exit(0)
 		}
 	}
+}
+
+func setupKubeClient() (*broker.Client, error) {
+	// The broker will always run inside the Kubernetes cluster.
+	c, err := clientcmd.BuildConfigFromFlags("", "")
+	if err != nil {
+		return nil, err
+	}
+
+	apiclientset, err := kubernetes.NewForConfig(c)
+	if err != nil {
+		return nil, err
+	}
+
+	cl, _, err := habclient.NewClient(c)
+	if err != nil {
+		return nil, err
+	}
+
+	return &broker.Client{
+		KubeClient: apiclientset,
+		Client:     cl,
+	}, nil
+
 }

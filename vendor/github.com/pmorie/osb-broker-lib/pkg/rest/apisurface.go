@@ -1,6 +1,8 @@
 package rest
 
 import (
+	"encoding/base64"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -19,29 +21,29 @@ import (
 // the broker's internal business logic into the correct places in the HTTP
 // response.
 type APISurface struct {
-	// BusinessLogic contains the business logic that provides the
+	// Broker contains the business logic that provides the
 	// implementation for the different OSB API operations.
-	BusinessLogic broker.BusinessLogic
-	Metrics       *metrics.OSBMetricsCollector
+	Broker  broker.Interface
+	Metrics *metrics.OSBMetricsCollector
 }
 
 // NewAPISurface returns a new, ready-to-go APISurface.
-func NewAPISurface(businessLogic broker.BusinessLogic, m *metrics.OSBMetricsCollector) (*APISurface, error) {
+func NewAPISurface(brokerInterface broker.Interface, m *metrics.OSBMetricsCollector) (*APISurface, error) {
 	api := &APISurface{
-		BusinessLogic: businessLogic,
-		Metrics:       m,
+		Broker:  brokerInterface,
+		Metrics: m,
 	}
 
 	return api, nil
 }
 
 // GetCatalogHandler is the mux handler that dispatches requests to get the
-// broker's catalog to the broker's BusinessLogic.
+// broker's catalog to the broker's Interface.
 func (s *APISurface) GetCatalogHandler(w http.ResponseWriter, r *http.Request) {
 	s.Metrics.Actions.WithLabelValues("get_catalog").Inc()
 
 	version := getBrokerAPIVersionFromRequest(r)
-	if err := s.BusinessLogic.ValidateBrokerAPIVersion(version); err != nil {
+	if err := s.Broker.ValidateBrokerAPIVersion(version); err != nil {
 		writeError(w, err, http.StatusPreconditionFailed)
 		return
 	}
@@ -51,7 +53,7 @@ func (s *APISurface) GetCatalogHandler(w http.ResponseWriter, r *http.Request) {
 		Request: r,
 	}
 
-	response, err := s.BusinessLogic.GetCatalog(c)
+	response, err := s.Broker.GetCatalog(c)
 	if err != nil {
 		writeError(w, err, http.StatusInternalServerError)
 		return
@@ -61,12 +63,12 @@ func (s *APISurface) GetCatalogHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // ProvisionHandler is the mux handler that dispatches ProvisionRequests to the
-// broker's BusinessLogic.
+// broker's Interface.
 func (s *APISurface) ProvisionHandler(w http.ResponseWriter, r *http.Request) {
 	s.Metrics.Actions.WithLabelValues("provision").Inc()
 
 	version := getBrokerAPIVersionFromRequest(r)
-	if err := s.BusinessLogic.ValidateBrokerAPIVersion(version); err != nil {
+	if err := s.Broker.ValidateBrokerAPIVersion(version); err != nil {
 		writeError(w, err, http.StatusPreconditionFailed)
 		return
 	}
@@ -84,7 +86,7 @@ func (s *APISurface) ProvisionHandler(w http.ResponseWriter, r *http.Request) {
 		Request: r,
 	}
 
-	response, err := s.BusinessLogic.Provision(request, c)
+	response, err := s.Broker.Provision(request, c)
 	if err != nil {
 		writeError(w, err, http.StatusInternalServerError)
 		return
@@ -104,6 +106,7 @@ func unpackProvisionRequest(r *http.Request) (*osb.ProvisionRequest, error) {
 	// - unmarshaling the request body
 	// - getting IDs out of mux vars
 	// - getting query parameters from request URL
+	// - retrieve originating origin identity
 	osbRequest := &osb.ProvisionRequest{}
 	if err := unmarshalRequestBody(r, osbRequest); err != nil {
 		return nil, err
@@ -116,17 +119,25 @@ func unpackProvisionRequest(r *http.Request) (*osb.ProvisionRequest, error) {
 	if strings.ToLower(asyncQueryParamVal) == "true" {
 		osbRequest.AcceptsIncomplete = true
 	}
+	identity, err := retrieveOriginatingIdentity(r)
+	// This could be not found because platforms may support the feature
+	// but are not guaranteed to.
+	if err != nil {
+		glog.Infof("Unable to retrieve originating identity - %v", err)
+	}
+
+	osbRequest.OriginatingIdentity = identity
 
 	return osbRequest, nil
 }
 
 // DeprovisionHandler is the mux handler that dispatches deprovision requests to
-// the broker's BusinessLogic.
+// the broker's Interface.
 func (s *APISurface) DeprovisionHandler(w http.ResponseWriter, r *http.Request) {
 	s.Metrics.Actions.WithLabelValues("deprovision").Inc()
 
 	version := getBrokerAPIVersionFromRequest(r)
-	if err := s.BusinessLogic.ValidateBrokerAPIVersion(version); err != nil {
+	if err := s.Broker.ValidateBrokerAPIVersion(version); err != nil {
 		writeError(w, err, http.StatusPreconditionFailed)
 		return
 	}
@@ -144,7 +155,7 @@ func (s *APISurface) DeprovisionHandler(w http.ResponseWriter, r *http.Request) 
 		Request: r,
 	}
 
-	response, err := s.BusinessLogic.Deprovision(request, c)
+	response, err := s.Broker.Deprovision(request, c)
 	if err != nil {
 		writeError(w, err, http.StatusInternalServerError)
 		return
@@ -164,24 +175,31 @@ func unpackDeprovisionRequest(r *http.Request) (*osb.DeprovisionRequest, error) 
 
 	vars := mux.Vars(r)
 	osbRequest.InstanceID = vars[osb.VarKeyInstanceID]
-	osbRequest.ServiceID = vars[osb.VarKeyServiceID]
-	osbRequest.PlanID = vars[osb.VarKeyPlanID]
+	osbRequest.ServiceID = r.FormValue(osb.VarKeyServiceID)
+	osbRequest.PlanID = r.FormValue(osb.VarKeyPlanID)
 
-	asyncQueryParamVal := r.URL.Query().Get(osb.AcceptsIncomplete)
+	asyncQueryParamVal := r.FormValue(osb.AcceptsIncomplete)
 	if strings.ToLower(asyncQueryParamVal) == "true" {
 		osbRequest.AcceptsIncomplete = true
 	}
+	identity, err := retrieveOriginatingIdentity(r)
+	// This could be not found because platforms may support the feature
+	// but are not guaranteed to.
+	if err != nil {
+		glog.Infof("Unable to retrieve originating identity - %v", err)
+	}
+	osbRequest.OriginatingIdentity = identity
 
 	return osbRequest, nil
 }
 
 // LastOperationHandler is the mux handler that dispatches last-operation
-// requests to the broker's BusinessLogic.
+// requests to the broker's Interface.
 func (s *APISurface) LastOperationHandler(w http.ResponseWriter, r *http.Request) {
 	s.Metrics.Actions.WithLabelValues("last_operation").Inc()
 
 	version := getBrokerAPIVersionFromRequest(r)
-	if err := s.BusinessLogic.ValidateBrokerAPIVersion(version); err != nil {
+	if err := s.Broker.ValidateBrokerAPIVersion(version); err != nil {
 		writeError(w, err, http.StatusPreconditionFailed)
 		return
 	}
@@ -201,7 +219,7 @@ func (s *APISurface) LastOperationHandler(w http.ResponseWriter, r *http.Request
 		Request: r,
 	}
 
-	response, err := s.BusinessLogic.LastOperation(request, c)
+	response, err := s.Broker.LastOperation(request, c)
 	if err != nil {
 		// TODO: This should return a 400 in this case as it is either
 		// malformed or missing mandatory data, as per the OSB spec.
@@ -235,12 +253,12 @@ func unpackLastOperationRequest(r *http.Request) (*osb.LastOperationRequest, err
 }
 
 // BindHandler is the mux handler that dispatches bind requests to the broker's
-// BusinessLogic.
+// Interface.
 func (s *APISurface) BindHandler(w http.ResponseWriter, r *http.Request) {
 	s.Metrics.Actions.WithLabelValues("bind").Inc()
 
 	version := getBrokerAPIVersionFromRequest(r)
-	if err := s.BusinessLogic.ValidateBrokerAPIVersion(version); err != nil {
+	if err := s.Broker.ValidateBrokerAPIVersion(version); err != nil {
 		writeError(w, err, http.StatusPreconditionFailed)
 		return
 	}
@@ -258,7 +276,7 @@ func (s *APISurface) BindHandler(w http.ResponseWriter, r *http.Request) {
 		Request: r,
 	}
 
-	response, err := s.BusinessLogic.Bind(request, c)
+	response, err := s.Broker.Bind(request, c)
 	if err != nil {
 		writeError(w, err, http.StatusInternalServerError)
 		return
@@ -277,17 +295,25 @@ func unpackBindRequest(r *http.Request) (*osb.BindRequest, error) {
 	vars := mux.Vars(r)
 	osbRequest.InstanceID = vars[osb.VarKeyInstanceID]
 	osbRequest.BindingID = vars[osb.VarKeyBindingID]
+	identity, err := retrieveOriginatingIdentity(r)
+	// This could be not found because platforms may support the feature
+	// but are not guaranteed to.
+	if err != nil {
+		glog.Infof("Unable to retrieve originating identity - %v", err)
+	}
+
+	osbRequest.OriginatingIdentity = identity
 
 	return osbRequest, nil
 }
 
 // UnbindHandler is the mux handler that dispatches unbind requests to the
-// broker's BusinessLogic.
+// broker's Interface.
 func (s *APISurface) UnbindHandler(w http.ResponseWriter, r *http.Request) {
 	s.Metrics.Actions.WithLabelValues("unbind").Inc()
 
 	version := getBrokerAPIVersionFromRequest(r)
-	if err := s.BusinessLogic.ValidateBrokerAPIVersion(version); err != nil {
+	if err := s.Broker.ValidateBrokerAPIVersion(version); err != nil {
 		writeError(w, err, http.StatusPreconditionFailed)
 		return
 	}
@@ -299,13 +325,12 @@ func (s *APISurface) UnbindHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	glog.Infof("Received UnbindRequest for instanceID %q, bindingID %q", request.InstanceID, request.BindingID)
-
 	c := &broker.RequestContext{
 		Writer:  w,
 		Request: r,
 	}
 
-	response, err := s.BusinessLogic.Unbind(request, c)
+	response, err := s.Broker.Unbind(request, c)
 	if err != nil {
 		writeError(w, err, http.StatusInternalServerError)
 		return
@@ -322,16 +347,24 @@ func unpackUnbindRequest(r *http.Request) (*osb.UnbindRequest, error) {
 	osbRequest.InstanceID = vars[osb.VarKeyInstanceID]
 	osbRequest.BindingID = vars[osb.VarKeyBindingID]
 
+	identity, err := retrieveOriginatingIdentity(r)
+	// This could be not found because platforms may support the feature
+	// but are not guaranteed to.
+	if err != nil {
+		glog.Infof("Unable to retrieve originating identity - %v", err)
+	}
+	osbRequest.OriginatingIdentity = identity
+
 	return osbRequest, nil
 }
 
 // UpdateHandler is the mux handler that dispatches Update requests to the
-// broker's BusinessLogic.
+// broker's Interface.
 func (s *APISurface) UpdateHandler(w http.ResponseWriter, r *http.Request) {
 	s.Metrics.Actions.WithLabelValues("update").Inc()
 
 	version := getBrokerAPIVersionFromRequest(r)
-	if err := s.BusinessLogic.ValidateBrokerAPIVersion(version); err != nil {
+	if err := s.Broker.ValidateBrokerAPIVersion(version); err != nil {
 		writeError(w, err, http.StatusPreconditionFailed)
 		return
 	}
@@ -349,7 +382,7 @@ func (s *APISurface) UpdateHandler(w http.ResponseWriter, r *http.Request) {
 		Request: r,
 	}
 
-	response, err := s.BusinessLogic.Update(request, c)
+	response, err := s.Broker.Update(request, c)
 	if err != nil {
 		writeError(w, err, http.StatusInternalServerError)
 		return
@@ -374,5 +407,37 @@ func unpackUpdateRequest(r *http.Request) (*osb.UpdateInstanceRequest, error) {
 		osbRequest.PlanID = &planID
 	}
 
+	identity, err := retrieveOriginatingIdentity(r)
+	// This could be not found because platforms may support the feature
+	// but are not guaranteed to.
+	if err != nil {
+		glog.Infof("Unable to retrieve originating identity - %v", err)
+	}
+	osbRequest.OriginatingIdentity = identity
+
 	return osbRequest, nil
+}
+
+// retrieveOriginatingIdentity retrieves the originating identity from
+// the request header.
+func retrieveOriginatingIdentity(r *http.Request) (*osb.OriginatingIdentity, error) {
+	identityHeader := r.Header.Get(osb.OriginatingIdentityHeader)
+	if identityHeader != "" {
+		identitySlice := strings.Split(identityHeader, " ")
+		if len(identitySlice) != 2 {
+			glog.Infof("invalid header for originating origin - %v", identityHeader)
+			return nil, fmt.Errorf("invalid originating identity header")
+		}
+		// Base64 decode the value string so the value is passed as valid JSON.
+		val, err := base64.StdEncoding.DecodeString(identitySlice[1])
+		if err != nil {
+			glog.Infof("invalid header for originating origin - %v", identityHeader)
+			return nil, fmt.Errorf("invalid encoding for value of originating identity header")
+		}
+		return &osb.OriginatingIdentity{
+			Platform: identitySlice[0],
+			Value:    string(val),
+		}, nil
+	}
+	return nil, fmt.Errorf("unable to find originating identity")
 }
