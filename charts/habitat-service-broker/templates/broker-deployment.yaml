@@ -20,6 +20,7 @@ spec:
         release: "{{ .Release.Name }}"
         heritage: "{{ .Release.Service }}"
     spec:
+      serviceAccountName: habitat-broker
       containers:
       - name: habitat-service-broker
         image: {{ .Values.image }}
