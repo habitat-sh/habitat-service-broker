@@ -161,11 +161,11 @@ func (b *BrokerLogic) Deprovision(request *osb.DeprovisionRequest, c *broker.Req
 	return &response, nil
 }
 
-func (b *BusinessLogic) LastOperation(request *osb.LastOperationRequest, c *broker.RequestContext) (*osb.LastOperationResponse, error) {
+func (b *BrokerLogic) LastOperation(request *osb.LastOperationRequest, c *broker.RequestContext) (*osb.LastOperationResponse, error) {
 	return nil, nil
 }
 
-func (b *BusinessLogic) Bind(request *osb.BindRequest, c *broker.RequestContext) (*osb.BindResponse, error) {
+func (b *BrokerLogic) Bind(request *osb.BindRequest, c *broker.RequestContext) (*osb.BindResponse, error) {
 	b.Lock()
 	defer b.Unlock()
 
@@ -178,12 +178,11 @@ func (b *BusinessLogic) Bind(request *osb.BindRequest, c *broker.RequestContext)
 	return &response, nil
 }
 
-func (b *BusinessLogic) Unbind(request *osb.UnbindRequest, c *broker.RequestContext) (*osb.UnbindResponse, error) {
-	// Your unbind business logic goes here
+func (b *BrokerLogic) Unbind(request *osb.UnbindRequest, c *broker.RequestContext) (*osb.UnbindResponse, error) {
 	return &osb.UnbindResponse{}, nil
 }
 
-func (b *BusinessLogic) Update(request *osb.UpdateInstanceRequest, c *broker.RequestContext) (*osb.UpdateInstanceResponse, error) {
+func (b *BrokerLogic) Update(request *osb.UpdateInstanceRequest, c *broker.RequestContext) (*osb.UpdateInstanceResponse, error) {
 	response := osb.UpdateInstanceResponse{}
 	if request.AcceptsIncomplete {
 		response.Async = b.async
