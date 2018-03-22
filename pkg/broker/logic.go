@@ -130,27 +130,20 @@ func (b *BrokerLogic) Provision(request *osb.ProvisionRequest, c *broker.Request
 		response.Async = b.async
 	}
 
-	fmt.Println("Started provisioning...")
-
 	hab, err := generateHabitatObject(request.PlanID)
 	if err != nil {
-		fmt.Println(err)
 		return nil, err
 	}
 
 	err = b.createHabitatResource(hab)
 	if err != nil {
-		fmt.Println(err)
 		return nil, err
 	}
-
-	// TODO: Figure out what else needs to be created here for each of the pre-packaged services.
-	// TODO: when statefulsets are merged into hab-operator, create a PV/PVC here as well.
 
 	return &response, nil
 }
 
-func (b *BusinessLogic) Deprovision(request *osb.DeprovisionRequest, c *broker.RequestContext) (*osb.DeprovisionResponse, error) {
+func (b *BrokerLogic) Deprovision(request *osb.DeprovisionRequest, c *broker.RequestContext) (*osb.DeprovisionResponse, error) {
 	b.Lock()
 	defer b.Unlock()
 
@@ -158,6 +151,11 @@ func (b *BusinessLogic) Deprovision(request *osb.DeprovisionRequest, c *broker.R
 
 	if request.AcceptsIncomplete {
 		response.Async = b.async
+	}
+
+	err := b.deleteResources(request.PlanID)
+	if err != nil {
+		return nil, err
 	}
 
 	return &response, nil
@@ -194,6 +192,59 @@ func (b *BusinessLogic) Update(request *osb.UpdateInstanceRequest, c *broker.Req
 	return &response, nil
 }
 
-func (b *BusinessLogic) ValidateBrokerAPIVersion(version string) error {
+func (b *BrokerLogic) ValidateBrokerAPIVersion(version string) error {
+	return nil
+}
+
+func generateHabitatObject(planID string) (*habv1beta1.Habitat, error) {
+	n, i, err := matchService(planID)
+	if err != nil {
+		return nil, err
+	}
+	// Generate Habitat object based on service.
+	hab := NewHabitat(n, i, 1) // TODO: Decide how many instances we should be running?
+
+	return hab, nil
+}
+
+func (b *BrokerLogic) deleteResources(planID string) error {
+	n, _, err := matchService(planID)
+	if err != nil {
+		return err
+	}
+
+	err = b.DeleteHabitat(n)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func matchService(planID string) (string, string, error) {
+	name := ""
+	image := ""
+
+	switch planID {
+	case "002341cf-f895-49f4-ba04-bb70291b895c":
+		name = "redis"
+		image = "kinvolk/osb-redis:latest" // TODO: find a better way than latest!
+	case "86064792-7ea2-467b-af93-ac9694d96d5b":
+		name = "nginx"
+		image = "kinvolk/osb-nginx:latest" // TODO: find a better way than latest!
+	case "":
+		return name, image, fmt.Errorf("PlanID could not be matched. PlanID was empty.")
+	default:
+		return nil, nil, fmt.Errorf("PlanID could not be matched. PlanID did not match existing PlanID.")
+	}
+
+	return name, image, nil
+}
+
+func (b *BrokerLogic) createHabitatResource(hab *habv1beta1.Habitat) error {
+	if err := b.CreateHabitat(hab); err != nil {
+		return err
+	}
+
 	return nil
 }
