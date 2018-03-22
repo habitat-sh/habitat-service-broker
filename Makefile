@@ -25,12 +25,27 @@ clean:
 	rm -f servicebroker
 	rm -f servicebroker-linux
 
+clean-all: deprovision-redis deprovision-nginx
+	helm del --purge habitat-service-broker
+
 push: image
 	$(SUDO_CMD) docker push "$(IMAGE):$(TAG)"
 
 deploy-helm: image
-	helm upgrade --install broker-skeleton --namespace broker-skeleton \
-	charts/servicebroker \
+	helm install --name habitat-service-broker --namespace habitat-broker \
+	charts/habitat-service-broker \
 	--set image="$(IMAGE):$(TAG)",imagePullPolicy="$(PULL)"
 
-.PHONY: build test linux image clean push deploy-helm
+provision-redis:
+	kubectl create -f manifests/redis/
+
+provision-nginx:
+	kubectl create -f manifests/nginx/
+
+deprovision-redis:
+	kubectl delete -f manifests/redis
+
+deprovision-nginx:
+	kubectl delete -f manifests/nginx
+
+.PHONY: build test linux image clean clean-all push deploy-helm provision-redis provision-nginx deprovision-redis deprovision-nginx
