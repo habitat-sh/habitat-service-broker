@@ -1,29 +1,41 @@
 package broker
 
 import (
+	"fmt"
 	"sync"
 
+	habv1beta1 "github.com/habitat-sh/habitat-operator/pkg/apis/habitat/v1beta1"
 	osb "github.com/pmorie/go-open-service-broker-client/v2"
 	"github.com/pmorie/osb-broker-lib/pkg/broker"
+	"gopkg.in/yaml.v2"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
-// NewBusinessLogic is a hook that is called with the Options the program is run with.
-func NewBusinessLogic(o *Options) (*BusinessLogic, error) {
-	return &BusinessLogic{
-		async: o.Async,
+// NewBrokerLogic is a hook that is called with the Options the program is run with.
+func NewBrokerLogic(o *Options, client *Client) (*BrokerLogic, error) {
+	return &BrokerLogic{
+		async:      o.Async,
+		KubeClient: client,
 	}, nil
 }
 
-// BusinessLogic provides an implementation of the broker.BusinessLogic
-// interface.
-type BusinessLogic struct {
+// BrokerLogic provides an implementation of the broker.BrokerLogic interface.
+type BrokerLogic struct {
 	// Indicates if the broker should handle the requests asynchronously.
 	async bool
 	// Synchronize go routines.
 	sync.RWMutex
+	KubeClient *Client
 }
 
-var _ broker.BusinessLogic = &BusinessLogic{}
+// Client stores all the information specfic to Kubernetes.
+type Client struct {
+	KubeClient kubernetes.Interface
+	Client     *rest.RESTClient
+}
+
+var _ broker.Interface = &BrokerLogic{}
 
 func (b *BrokerLogic) GetCatalog(c *broker.RequestContext) (*osb.CatalogResponse, error) {
 	response := &osb.CatalogResponse{}

@@ -13,10 +13,13 @@ import (
 	"github.com/kinvolk/habitat-service-broker/pkg/broker"
 
 	"github.com/golang/glog"
+	habclient "github.com/habitat-sh/habitat-operator/pkg/client"
 	"github.com/pmorie/osb-broker-lib/pkg/metrics"
 	"github.com/pmorie/osb-broker-lib/pkg/rest"
 	"github.com/pmorie/osb-broker-lib/pkg/server"
 	prom "github.com/prometheus/client_golang/prometheus"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 var options struct {
@@ -62,7 +65,12 @@ func runWithContext(ctx context.Context) error {
 
 	addr := ":" + strconv.Itoa(options.Port)
 
-	businessLogic, err := broker.NewBusinessLogic(&options.Options)
+	client, err := setupKubeClient()
+	if err != nil {
+		return err
+	}
+
+	brokerLogic, err := broker.NewBrokerLogic(&options.Options, client)
 	if err != nil {
 		return err
 	}
@@ -72,7 +80,7 @@ func runWithContext(ctx context.Context) error {
 	osbMetrics := metrics.New()
 	reg.MustRegister(osbMetrics)
 
-	api, err := rest.NewAPISurface(businessLogic, osbMetrics)
+	api, err := rest.NewAPISurface(brokerLogic, osbMetrics)
 	if err != nil {
 		return err
 	}
@@ -103,4 +111,28 @@ func cancelOnInterrupt(ctx context.Context, f context.CancelFunc) {
 			os.Exit(0)
 		}
 	}
+}
+
+func setupKubeClient() (*broker.Client, error) {
+	// The broker will always run inside the Kubernetes cluster.
+	c, err := clientcmd.BuildConfigFromFlags("", "")
+	if err != nil {
+		return nil, err
+	}
+
+	apiclientset, err := kubernetes.NewForConfig(c)
+	if err != nil {
+		return nil, err
+	}
+
+	cl, _, err := habclient.NewClient(c)
+	if err != nil {
+		return nil, err
+	}
+
+	return &broker.Client{
+		KubeClient: apiclientset,
+		Client:     cl,
+	}, nil
+
 }
