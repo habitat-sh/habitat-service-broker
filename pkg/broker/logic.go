@@ -248,7 +248,7 @@ func matchService(planID string) (string, string, error) {
 	case "":
 		return name, image, fmt.Errorf("PlanID could not be matched. PlanID was empty.")
 	default:
-		return nil, nil, fmt.Errorf("PlanID could not be matched. PlanID did not match existing PlanID.")
+		return name, image, fmt.Errorf("PlanID could not be matched. PlanID did not match existing PlanID.")
 	}
 
 	return name, image, nil
