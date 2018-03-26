@@ -15,12 +15,18 @@
 package broker
 
 import (
+	"errors"
 	"fmt"
 	"sync"
+	"time"
 
+	"github.com/golang/glog"
 	habv1beta1 "github.com/habitat-sh/habitat-operator/pkg/apis/habitat/v1beta1"
 	osb "github.com/pmorie/go-open-service-broker-client/v2"
 	"github.com/pmorie/osb-broker-lib/pkg/broker"
+	v1 "k8s.io/api/core/v1"
+	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
@@ -118,6 +124,12 @@ func (b *BrokerLogic) Bind(request *osb.BindRequest, c *broker.RequestContext) (
 		response.Async = b.async
 	}
 
+	err := b.createBinding(request)
+	if err != nil {
+		return nil, err
+	}
+
+	response.Exists = true
 	return &response, nil
 }
 
@@ -189,4 +201,144 @@ func (b *BrokerLogic) createHabitatResource(hab *habv1beta1.Habitat) error {
 	}
 
 	return nil
+}
+
+func (b *BrokerLogic) createBinding(request *osb.BindRequest) error {
+	name, _, err := matchService(request.PlanID)
+	if err != nil {
+		return err
+	}
+
+	switch name {
+	case "redis":
+		dataString := fmt.Sprintf("requirepass = %q", randSeq(10))
+		secret, err := b.createSecret("habitat-osb-redis", "user.toml", dataString)
+		if err != nil {
+			return err
+		}
+
+		err = b.verifySecretExists(secret.Name)
+		if err != nil {
+			return err
+		}
+
+		hab, err := b.GetHabitat(name)
+		if err != nil {
+			return err
+		}
+
+		hab.Kind = "Habitat"
+		hab.APIVersion = "habitat.sh/v1beta1"
+		hab.Spec.Service.ConfigSecretName = secret.Name
+
+		err = b.UpdateHabitat(hab)
+		if err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("Binding for %q is not implemented.", name)
+	}
+
+	return nil
+}
+
+func (b *BrokerLogic) createSecret(secretPrefix, dataKey, dataString string) (*v1.Secret, error) {
+	s := &v1.Secret{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Secret",
+			APIVersion: "v1",
+		},
+		Type: v1.SecretTypeOpaque,
+	}
+
+	timer := time.NewTimer(15 * time.Second)
+	defer timer.Stop()
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-timer.C:
+			return nil, errors.New("Max retries exceeded: secret not created")
+		default:
+		}
+
+		secretName := fmt.Sprintf("%s-%s", secretPrefix, randSeq(5))
+		s.ObjectMeta = metav1.ObjectMeta{Name: secretName}
+		s.Data = map[string][]byte{dataKey: []byte(dataString)}
+
+		// TODO: figure out how to know in which namespace to deploy.
+		secret, err := b.KubeClient.KubeClient.CoreV1().Secrets("default").Create(s)
+		if err == nil {
+			return secret, nil
+		}
+
+		switch e := err.(type) {
+		case *k8sErrors.StatusError:
+			// We will only retry if there's a clash in the secret's name
+			// or else let the caller of this method handle the error.
+			if e.ErrStatus.Reason != metav1.StatusReasonAlreadyExists {
+				return nil, err
+			}
+		default:
+			// We will not handle any other kind of error.
+			return nil, err
+		}
+
+		glog.Warningf("secret with name %s already exists. Trying again with a different name...", secretName)
+
+		<-ticker.C
+	}
+}
+
+func (b *BrokerLogic) verifySecretExists(name string) error {
+	options := metav1.GetOptions{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Secret",
+			APIVersion: "v1",
+		},
+		IncludeUninitialized: false,
+	}
+
+	timer := time.NewTimer(15 * time.Second)
+	defer timer.Stop()
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+
+		select {
+		case <-timer.C:
+			return errors.New("Max retries exceeded: secret not found")
+		default:
+		}
+
+		// TODO: figure out how to know in which namespace to deploy.
+		_, err := b.KubeClient.KubeClient.
+			CoreV1().
+			Secrets("default").
+			Get(name, options)
+		if err == nil {
+			return nil
+		}
+
+		switch e := err.(type) {
+		case *k8sErrors.StatusError:
+			// We will only retry if the secret was not found (probably
+			// because it wasn't created yet) or else let the caller
+			// of this method handle the error.
+			if e.ErrStatus.Reason != metav1.StatusReasonNotFound {
+				return err
+			}
+		default:
+			// We will not handle any other kind of error.
+			return err
+		}
+
+		glog.Warningf("secret with name %s not found yet, trying again...", name)
+
+		<-ticker.C
+	}
 }

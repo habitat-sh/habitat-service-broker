@@ -76,7 +76,7 @@ func redisService() osb.Service {
 		Name:          "redis-habitat",
 		ID:            "50e86479-4c66-4236-88fb-a1e61b4c9448",
 		Description:   "Redis packaged with Habitat",
-		Bindable:      false,
+		Bindable:      true,
 		PlanUpdatable: boolPtr(false),
 		Metadata: map[string]interface{}{
 			"displayName": "Habitat Redis service",

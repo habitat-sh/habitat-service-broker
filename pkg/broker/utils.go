@@ -19,6 +19,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+func (b *BrokerLogic) GetHabitat(name string) (*habv1beta1.Habitat, error) {
+	result := &habv1beta1.Habitat{}
+	err := b.KubeClient.Client.Get().
+		Namespace("default"). // TODO: figure out how to know in which namespace to deploy.
+		Resource(habv1beta1.HabitatResourcePlural).
+		Name(name).
+		Do().
+		Into(result)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
 // CreateHabitat creates a Habitat resource through the Kuberentes client,
 // based on the passed Habitat object.
 func (b *BrokerLogic) CreateHabitat(habitat *habv1beta1.Habitat) error {
@@ -26,6 +42,16 @@ func (b *BrokerLogic) CreateHabitat(habitat *habv1beta1.Habitat) error {
 	return b.KubeClient.Client.Post().
 		Namespace("default"). // TODO: figure out how to know in which namespace to deploy.
 		Resource(habv1beta1.HabitatResourcePlural).
+		Body(habitat).
+		Do().
+		Error()
+}
+
+func (b *BrokerLogic) UpdateHabitat(habitat *habv1beta1.Habitat) error {
+	return b.KubeClient.Client.Put().
+		Namespace("default"). // TODO: figure out how to know in which namespace to deploy.
+		Resource(habv1beta1.HabitatResourcePlural).
+		Name(habitat.Name).
 		Body(habitat).
 		Do().
 		Error()
@@ -47,6 +73,7 @@ func NewHabitat(name, image string, count int) *habv1beta1.Habitat {
 			Service: habv1beta1.Service{
 				Group:    "default",
 				Topology: habv1beta1.TopologyStandalone,
+				Name:     name, // This should always be the habitat package name
 			},
 		},
 	}
