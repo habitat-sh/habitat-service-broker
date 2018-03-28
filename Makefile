@@ -37,10 +37,10 @@ deploy-helm: image
 	--set image="$(IMAGE):$(TAG)",imagePullPolicy="$(PULL)"
 
 provision-redis:
-	kubectl create -f manifests/redis/
+	kubectl apply -f manifests/redis/
 
 provision-nginx:
-	kubectl create -f manifests/nginx/
+	kubectl apply -f manifests/nginx/
 
 deprovision-redis:
 	kubectl delete -f manifests/redis
