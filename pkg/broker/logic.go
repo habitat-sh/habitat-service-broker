@@ -21,7 +21,6 @@ import (
 	habv1beta1 "github.com/habitat-sh/habitat-operator/pkg/apis/habitat/v1beta1"
 	osb "github.com/pmorie/go-open-service-broker-client/v2"
 	"github.com/pmorie/osb-broker-lib/pkg/broker"
-	"gopkg.in/yaml.v2"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
@@ -51,94 +50,24 @@ type Client struct {
 
 var _ broker.Interface = &BrokerLogic{}
 
-func (b *BrokerLogic) GetCatalog(c *broker.RequestContext) (*osb.CatalogResponse, error) {
-	response := &osb.CatalogResponse{}
-
-	// TODO (lilic): At some point move these at a more appropriate place.
-	data := `
----
-services:
-- name: nginx-habitat
-  id: 1ac7de1d-d89a-41c7-b9a8-744f9256e375
-  description: Nginx packaged with Habitat
-  bindable: false
-  plan_updateable: false
-  metadata:
-    displayName: "Habitat Nginx service"
-    imageUrl: https://avatars2.githubusercontent.com/u/19862012?s=200&v=4
-  plans:
-  - name: default
-    id: 86064792-7ea2-467b-af93-ac9694d96d5b
-    description: The default plan for the Nginx Habitat service
-    free: true
-    schemas:
-      service_instance:
-        create:
-          "$schema": "http://json-schema.org/draft-04/schema"
-          "type": "object"
-          "title": "Parameters"
-          "properties":
-          - "name":
-              "title": "Some Name"
-              "type": "string"
-              "maxLength": 63
-              "default": "My Name"
-          - "color":
-              "title": "Color"
-              "type": "string"
-              "default": "Clear"
-              "enum":
-              - "Clear"
-              - "Beige"
-              - "Grey"
-- name: redis-habitat
-  id: 50e86479-4c66-4236-88fb-a1e61b4c9448 
-  description: Redis packaged with Habitat
-  bindable: false
-  plan_updateable: false
-  metadata:
-    displayName: "Habitat Redis service"
-    imageUrl: https://avatars2.githubusercontent.com/u/19862012?s=200&v=4
-  plans:
-  - name: default
-    id: 002341cf-f895-49f4-ba04-bb70291b895c
-    description: The default plan for the Redis Habitat example service
-    free: true
-    schemas:
-      service_instance:
-        create:
-          "$schema": "http://json-schema.org/draft-04/schema"
-          "type": "object"
-          "title": "Parameters"
-          "properties":
-          - "name":
-              "title": "Some Name"
-              "type": "string"
-              "maxLength": 63
-              "default": "My Name"
-          - "color":
-              "title": "Color"
-              "type": "string"
-              "default": "Clear"
-              "enum":
-              - "Clear"
-              - "Beige"
-              - "Grey"
-`
-
-	err := yaml.Unmarshal([]byte(data), &response)
-	if err != nil {
-		return nil, err
+func (b *BrokerLogic) GetCatalog(c *broker.RequestContext) (*broker.CatalogResponse, error) {
+	response := &broker.CatalogResponse{
+		CatalogResponse: osb.CatalogResponse{
+			Services: []osb.Service{
+				nginxService(),
+				redisService(),
+			},
+		},
 	}
 
 	return response, nil
 }
 
-func (b *BrokerLogic) Provision(request *osb.ProvisionRequest, c *broker.RequestContext) (*osb.ProvisionResponse, error) {
+func (b *BrokerLogic) Provision(request *osb.ProvisionRequest, c *broker.RequestContext) (*broker.ProvisionResponse, error) {
 	b.Lock()
 	defer b.Unlock()
 
-	response := osb.ProvisionResponse{}
+	response := broker.ProvisionResponse{}
 
 	if request.AcceptsIncomplete {
 		response.Async = b.async
@@ -157,11 +86,11 @@ func (b *BrokerLogic) Provision(request *osb.ProvisionRequest, c *broker.Request
 	return &response, nil
 }
 
-func (b *BrokerLogic) Deprovision(request *osb.DeprovisionRequest, c *broker.RequestContext) (*osb.DeprovisionResponse, error) {
+func (b *BrokerLogic) Deprovision(request *osb.DeprovisionRequest, c *broker.RequestContext) (*broker.DeprovisionResponse, error) {
 	b.Lock()
 	defer b.Unlock()
 
-	response := osb.DeprovisionResponse{}
+	response := broker.DeprovisionResponse{}
 
 	if request.AcceptsIncomplete {
 		response.Async = b.async
@@ -175,15 +104,15 @@ func (b *BrokerLogic) Deprovision(request *osb.DeprovisionRequest, c *broker.Req
 	return &response, nil
 }
 
-func (b *BrokerLogic) LastOperation(request *osb.LastOperationRequest, c *broker.RequestContext) (*osb.LastOperationResponse, error) {
+func (b *BrokerLogic) LastOperation(request *osb.LastOperationRequest, c *broker.RequestContext) (*broker.LastOperationResponse, error) {
 	return nil, nil
 }
 
-func (b *BrokerLogic) Bind(request *osb.BindRequest, c *broker.RequestContext) (*osb.BindResponse, error) {
+func (b *BrokerLogic) Bind(request *osb.BindRequest, c *broker.RequestContext) (*broker.BindResponse, error) {
 	b.Lock()
 	defer b.Unlock()
 
-	response := osb.BindResponse{}
+	response := broker.BindResponse{}
 
 	if request.AcceptsIncomplete {
 		response.Async = b.async
@@ -192,12 +121,12 @@ func (b *BrokerLogic) Bind(request *osb.BindRequest, c *broker.RequestContext) (
 	return &response, nil
 }
 
-func (b *BrokerLogic) Unbind(request *osb.UnbindRequest, c *broker.RequestContext) (*osb.UnbindResponse, error) {
-	return &osb.UnbindResponse{}, nil
+func (b *BrokerLogic) Unbind(request *osb.UnbindRequest, c *broker.RequestContext) (*broker.UnbindResponse, error) {
+	return &broker.UnbindResponse{}, nil
 }
 
-func (b *BrokerLogic) Update(request *osb.UpdateInstanceRequest, c *broker.RequestContext) (*osb.UpdateInstanceResponse, error) {
-	response := osb.UpdateInstanceResponse{}
+func (b *BrokerLogic) Update(request *osb.UpdateInstanceRequest, c *broker.RequestContext) (*broker.UpdateInstanceResponse, error) {
+	response := broker.UpdateInstanceResponse{}
 	if request.AcceptsIncomplete {
 		response.Async = b.async
 	}
