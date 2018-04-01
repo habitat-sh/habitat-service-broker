@@ -1,0 +1,68 @@
+---
+services:
+- name: nginx-habitat
+  id: 1ac7de1d-d89a-41c7-b9a8-744f9256e375
+  description: Nginx packaged with Habitat
+  bindable: false
+  plan_updateable: false
+  metadata:
+    displayName: "Habitat Nginx service"
+    imageUrl: https://avatars2.githubusercontent.com/u/19862012?s=200&v=4
+  plans:
+  - name: default
+    id: 86064792-7ea2-467b-af93-ac9694d96d5b
+    description: The default plan for the Nginx Habitat service
+    free: true
+    schemas:
+      service_instance:
+        create:
+          "$schema": "http://json-schema.org/draft-04/schema"
+          "type": "object"
+          "title": "Parameters"
+          "properties":
+          - "name":
+              "title": "Some Name"
+              "type": "string"
+              "maxLength": 63
+              "default": "My Name"
+          - "color":
+              "title": "Color"
+              "type": "string"
+              "default": "Clear"
+              "enum":
+              - "Clear"
+              - "Beige"
+              - "Grey"
+- name: redis-habitat
+  id: 50e86479-4c66-4236-88fb-a1e61b4c9448
+  description: Redis packaged with Habitat
+  bindable: false
+  plan_updateable: false
+  metadata:
+    displayName: "Habitat Redis service"
+    imageUrl: https://avatars2.githubusercontent.com/u/19862012?s=200&v=4
+  plans:
+  - name: default
+    id: 002341cf-f895-49f4-ba04-bb70291b895c
+    description: The default plan for the Redis Habitat example service
+    free: true
+    schemas:
+      service_instance:
+        create:
+          "$schema": "http://json-schema.org/draft-04/schema"
+          "type": "object"
+          "title": "Parameters"
+          "properties":
+          - "name":
+              "title": "Some Name"
+              "type": "string"
+              "maxLength": 63
+              "default": "My Name"
+          - "color":
+              "title": "Color"
+              "type": "string"
+              "default": "Clear"
+              "enum":
+              - "Clear"
+              - "Beige"
+              - "Grey"
