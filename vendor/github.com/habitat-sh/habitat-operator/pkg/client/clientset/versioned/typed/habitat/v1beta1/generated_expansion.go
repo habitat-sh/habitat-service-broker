@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +k8s:deepcopy-gen=package
+// This file was automatically generated, DO NOT EDIT.
 
-// +groupName=habitat.sh
 package v1beta1
+
+type HabitatExpansion interface{}

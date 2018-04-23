@@ -131,11 +131,13 @@
 [[projects]]
   name = "github.com/habitat-sh/habitat-operator"
   packages = [
+    "pkg/apis/habitat",
     "pkg/apis/habitat/v1beta1",
-    "pkg/client"
+    "pkg/client/clientset/versioned/scheme",
+    "pkg/client/clientset/versioned/typed/habitat/v1beta1"
   ]
-  revision = "76c701062982ed5249bd5fe1ca9b6135fbc65ceb"
-  version = "v0.5.1"
+  revision = "75544a3b03cff6a16f0c7af8ffd52a1f808025e6"
+  version = "v0.6.1"
 
 [[projects]]
   branch = "master"
@@ -160,12 +162,6 @@
   packages = ["."]
   revision = "59fac5042749a5afb9af70e813da1dd5474f0167"
   version = "1.0.1"
-
-[[projects]]
-  name = "github.com/kinvolk/habitat-operator"
-  packages = ["pkg/apis/habitat/v1beta1"]
-  revision = "76c701062982ed5249bd5fe1ca9b6135fbc65ceb"
-  version = "v0.5.1"
 
 [[projects]]
   branch = "master"
@@ -362,18 +358,6 @@
   version = "kubernetes-1.9.0"
 
 [[projects]]
-  name = "k8s.io/apiextensions-apiserver"
-  packages = [
-    "pkg/apis/apiextensions",
-    "pkg/apis/apiextensions/v1beta1",
-    "pkg/client/clientset/clientset",
-    "pkg/client/clientset/clientset/scheme",
-    "pkg/client/clientset/clientset/typed/apiextensions/v1beta1"
-  ]
-  revision = "98ecf7bbd60f9f11a72000e4f05203f542136219"
-  version = "kubernetes-1.9.0"
-
-[[projects]]
   name = "k8s.io/apimachinery"
   packages = [
     "pkg/api/errors",
@@ -477,6 +461,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "616a159e557c42812fdcdbc3eabf57bf40d77a98a6c5cc3d13a27c1022ed9e4b"
+  inputs-digest = "6079730e2024f0fc515540cb9d35873b874fd244ce230ea2d18c5655ed35c668"
   solver-name = "gps-cdcl"
   solver-version = 1

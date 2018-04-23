@@ -22,20 +22,20 @@ import (
 
 	"github.com/golang/glog"
 	habv1beta1 "github.com/habitat-sh/habitat-operator/pkg/apis/habitat/v1beta1"
+	habclient "github.com/habitat-sh/habitat-operator/pkg/client/clientset/versioned/typed/habitat/v1beta1"
 	osb "github.com/pmorie/go-open-service-broker-client/v2"
 	"github.com/pmorie/osb-broker-lib/pkg/broker"
 	v1 "k8s.io/api/core/v1"
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 )
 
 // NewBrokerLogic is a hook that is called with the Options the program is run with.
-func NewBrokerLogic(o *Options, client *Client) (*BrokerLogic, error) {
+func NewBrokerLogic(o *Options, clients *Clients) (*BrokerLogic, error) {
 	return &BrokerLogic{
-		async:      o.Async,
-		KubeClient: client,
+		async:   o.Async,
+		Clients: clients,
 	}, nil
 }
 
@@ -45,13 +45,13 @@ type BrokerLogic struct {
 	async bool
 	// Synchronize go routines.
 	sync.RWMutex
-	KubeClient *Client
+	Clients *Clients
 }
 
-// Client stores all the information specfic to Kubernetes.
-type Client struct {
+// Clients stores all the information specfic to Kubernetes.
+type Clients struct {
 	KubeClient kubernetes.Interface
-	Client     *rest.RESTClient
+	HabClient  habclient.HabitatInterface
 }
 
 var _ broker.Interface = &BrokerLogic{}
@@ -269,7 +269,7 @@ func (b *BrokerLogic) createSecret(secretPrefix, dataKey, dataString string) (*v
 		s.Data = map[string][]byte{dataKey: []byte(dataString)}
 
 		// TODO: figure out how to know in which namespace to deploy.
-		secret, err := b.KubeClient.KubeClient.CoreV1().Secrets("default").Create(s)
+		secret, err := b.Clients.KubeClient.CoreV1().Secrets("default").Create(s)
 		if err == nil {
 			return secret, nil
 		}
@@ -316,7 +316,7 @@ func (b *BrokerLogic) verifySecretExists(name string) error {
 		}
 
 		// TODO: figure out how to know in which namespace to deploy.
-		_, err := b.KubeClient.KubeClient.
+		_, err := b.Clients.KubeClient.
 			CoreV1().
 			Secrets("default").
 			Get(name, options)

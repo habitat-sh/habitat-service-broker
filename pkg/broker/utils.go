@@ -20,41 +20,19 @@ import (
 )
 
 func (b *BrokerLogic) GetHabitat(name string) (*habv1beta1.Habitat, error) {
-	result := &habv1beta1.Habitat{}
-	err := b.KubeClient.Client.Get().
-		Namespace("default"). // TODO: figure out how to know in which namespace to deploy.
-		Resource(habv1beta1.HabitatResourcePlural).
-		Name(name).
-		Do().
-		Into(result)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return result, nil
+	return b.Clients.HabClient.Get(name, metav1.GetOptions{})
 }
 
 // CreateHabitat creates a Habitat resource through the Kuberentes client,
 // based on the passed Habitat object.
 func (b *BrokerLogic) CreateHabitat(habitat *habv1beta1.Habitat) error {
-	// TODO: Change namespace in which Habitat is created.
-	return b.KubeClient.Client.Post().
-		Namespace("default"). // TODO: figure out how to know in which namespace to deploy.
-		Resource(habv1beta1.HabitatResourcePlural).
-		Body(habitat).
-		Do().
-		Error()
+	_, err := b.Clients.HabClient.Create(habitat)
+	return err
 }
 
 func (b *BrokerLogic) UpdateHabitat(habitat *habv1beta1.Habitat) error {
-	return b.KubeClient.Client.Put().
-		Namespace("default"). // TODO: figure out how to know in which namespace to deploy.
-		Resource(habv1beta1.HabitatResourcePlural).
-		Name(habitat.Name).
-		Body(habitat).
-		Do().
-		Error()
+	_, err := b.Clients.HabClient.Update(habitat)
+	return err
 }
 
 // NewHabitat generates a Habitat object based on the passed params.
@@ -81,10 +59,5 @@ func NewHabitat(name, image string, count int) *habv1beta1.Habitat {
 
 // DeleteHabitat sends a request to delete a Habitat resource.
 func (b *BrokerLogic) DeleteHabitat(habitatName string) error {
-	return b.KubeClient.Client.Delete().
-		Namespace("default"). // TODO: figure out how to know in which namespace to deploy.
-		Resource(habv1beta1.HabitatResourcePlural).
-		Name(habitatName).
-		Do().
-		Error()
+	return b.Clients.HabClient.Delete(habitatName, nil)
 }

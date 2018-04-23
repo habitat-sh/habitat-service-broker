@@ -12,5 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +k8s:deepcopy-gen=package
-package v1beta1
+// This file was automatically generated, DO NOT EDIT.
+
+// This package contains the scheme of the automatically generated clientset.
+package scheme
