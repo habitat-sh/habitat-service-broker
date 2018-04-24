@@ -134,7 +134,22 @@ func (b *BrokerLogic) Bind(request *osb.BindRequest, c *broker.RequestContext) (
 }
 
 func (b *BrokerLogic) Unbind(request *osb.UnbindRequest, c *broker.RequestContext) (*broker.UnbindResponse, error) {
-	return &broker.UnbindResponse{}, nil
+	b.Lock()
+	defer b.Unlock()
+
+	response := broker.UnbindResponse{}
+
+	if request.AcceptsIncomplete {
+		response.Async = b.async
+	}
+
+	err := b.deleteBinding(request)
+	if err != nil {
+		glog.Warningf("Error in unbind: %q", err)
+		return nil, err
+	}
+
+	return &response, nil
 }
 
 func (b *BrokerLogic) Update(request *osb.UpdateInstanceRequest, c *broker.RequestContext) (*broker.UpdateInstanceResponse, error) {
@@ -242,6 +257,39 @@ func (b *BrokerLogic) createBinding(request *osb.BindRequest) error {
 	return nil
 }
 
+func (b *BrokerLogic) deleteBinding(request *osb.UnbindRequest) error {
+	name, _, err := matchService(request.PlanID)
+	if err != nil {
+		return fmt.Errorf("error matching service: %v", err)
+	}
+
+	hab, err := b.GetHabitat(name)
+	if err != nil {
+		return fmt.Errorf("error getting Habitat service: %v", err)
+	}
+
+	switch name {
+	case "redis":
+		hab.Kind = "Habitat"
+		hab.APIVersion = "habitat.sh/v1beta1"
+		hab.Spec.Service.ConfigSecretName = ""
+
+		err = b.UpdateHabitat(hab)
+		if err != nil {
+			return fmt.Errorf("error updating habitat: %v", err)
+		}
+
+		err := b.deleteSecret(hab.Spec.Service.ConfigSecretName)
+		if err != nil {
+			return fmt.Errorf("error deleting secret: %v", err)
+		}
+	default:
+		return fmt.Errorf("unbinding for %q is not implemented.", name)
+	}
+
+	return nil
+}
+
 func (b *BrokerLogic) createSecret(secretPrefix, dataKey, dataString string) (*v1.Secret, error) {
 	s := &v1.Secret{
 		TypeMeta: metav1.TypeMeta{
@@ -260,7 +308,7 @@ func (b *BrokerLogic) createSecret(secretPrefix, dataKey, dataString string) (*v
 	for {
 		select {
 		case <-timer.C:
-			return nil, errors.New("Max retries exceeded: secret not created")
+			return nil, errors.New("max retries exceeded: secret not created")
 		default:
 		}
 
@@ -311,7 +359,7 @@ func (b *BrokerLogic) verifySecretExists(name string) error {
 
 		select {
 		case <-timer.C:
-			return errors.New("Max retries exceeded: secret not found")
+			return errors.New("max retries exceeded: secret not found")
 		default:
 		}
 
@@ -341,4 +389,19 @@ func (b *BrokerLogic) verifySecretExists(name string) error {
 
 		<-ticker.C
 	}
+}
+
+func (b *BrokerLogic) deleteSecret(name string) error {
+	options := &metav1.DeleteOptions{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Secret",
+			APIVersion: "v1",
+		},
+	}
+
+	// TODO: figure out how to know in which namespace to deploy.
+	return b.Clients.KubeClient.
+		CoreV1().
+		Secrets("default").
+		Delete(name, options)
 }
