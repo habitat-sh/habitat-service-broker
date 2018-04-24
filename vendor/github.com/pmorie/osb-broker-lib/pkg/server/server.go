@@ -58,6 +58,9 @@ func registerAPIHandlers(router *mux.Router, api *rest.APISurface) {
 	router.HandleFunc("/v2/service_instances/{instance_id}", api.UpdateHandler).Methods("PATCH")
 	router.HandleFunc("/v2/service_instances/{instance_id}/service_bindings/{binding_id}", api.BindHandler).Methods("PUT")
 	router.HandleFunc("/v2/service_instances/{instance_id}/service_bindings/{binding_id}", api.UnbindHandler).Methods("DELETE")
+	router.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("OK"))
+	})
 }
 
 // Run creates the HTTP handler and begins to listen on the specified address.
@@ -90,6 +93,15 @@ func (s *Server) RunTLS(ctx context.Context, addr string, cert string, key strin
 		srv.TLSConfig = new(tls.Config)
 		srv.TLSConfig.Certificates = []tls.Certificate{tlsCert}
 		return srv.ListenAndServeTLS("", "")
+	}
+	return s.run(ctx, addr, listenAndServe)
+}
+
+// RunTLSWithTLSFiles creates the HTTPS handler based on the certification
+// files that were passed and begins to listen on the specified address.
+func (s *Server) RunTLSWithTLSFiles(ctx context.Context, addr string, certFilePath string, keyFilePath string) error {
+	listenAndServe := func(srv *http.Server) error {
+		return srv.ListenAndServeTLS(certFilePath, keyFilePath)
 	}
 	return s.run(ctx, addr, listenAndServe)
 }

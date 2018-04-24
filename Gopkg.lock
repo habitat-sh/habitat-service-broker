@@ -217,8 +217,8 @@
     "pkg/rest",
     "pkg/server"
   ]
-  revision = "589b24e9f330a7e3ca646929907f3376cc1629b6"
-  version = "0.0.6"
+  revision = "f4ca270ef323318b363f986229bd10bccb2d28b1"
+  version = "0.0.10"
 
 [[projects]]
   name = "github.com/prometheus/client_golang"
