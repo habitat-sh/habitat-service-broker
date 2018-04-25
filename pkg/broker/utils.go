@@ -40,7 +40,7 @@ func NewHabitat(name, image string, count int) *habv1beta1.Habitat {
 	groupName := "default"
 	customVersion := "v1beta2"
 
-	return &habv1beta1.Habitat{
+	h := habv1beta1.Habitat{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Habitat",            //TODO: take from hab-operator
 			APIVersion: "habitat.sh/v1beta1", //TODO: take from hab-operator
@@ -61,6 +61,19 @@ func NewHabitat(name, image string, count int) *habv1beta1.Habitat {
 		},
 		CustomVersion: &customVersion,
 	}
+
+	if name == "redis" {
+		// TODO: The StorageClassName is hardcoded to work with minikube at the
+		// moment but should be a passed as an argument to make it work across
+		// other providers.
+		h.Spec.V1beta2.PersistentStorage = &habv1beta1.PersistentStorage{
+			Size:             "128Mi",
+			MountPath:        "/hab/svc/redis/data",
+			StorageClassName: "standard",
+		}
+	}
+
+	return &h
 }
 
 // DeleteHabitat sends a request to delete a Habitat resource.
