@@ -244,7 +244,7 @@ func (b *BrokerLogic) createBinding(request *osb.BindRequest) error {
 
 		hab.Kind = "Habitat"
 		hab.APIVersion = "habitat.sh/v1beta1"
-		hab.Spec.Service.ConfigSecretName = secret.Name
+		hab.Spec.V1beta2.Service.ConfigSecretName = &secret.Name
 
 		err = b.UpdateHabitat(hab)
 		if err != nil {
@@ -270,16 +270,21 @@ func (b *BrokerLogic) deleteBinding(request *osb.UnbindRequest) error {
 
 	switch name {
 	case "redis":
+		secretName := hab.Spec.V1beta2.Service.ConfigSecretName
+		if secretName == nil {
+			return fmt.Errorf("unbinding failed for %q as %q is nil", name, "configSecretName")
+		}
+
 		hab.Kind = "Habitat"
 		hab.APIVersion = "habitat.sh/v1beta1"
-		hab.Spec.Service.ConfigSecretName = ""
+		hab.Spec.V1beta2.Service.ConfigSecretName = nil
 
 		err = b.UpdateHabitat(hab)
 		if err != nil {
 			return fmt.Errorf("error updating habitat: %v", err)
 		}
 
-		err := b.deleteSecret(hab.Spec.Service.ConfigSecretName)
+		err := b.deleteSecret(*secretName)
 		if err != nil {
 			return fmt.Errorf("error deleting secret: %v", err)
 		}
