@@ -37,6 +37,9 @@ func (b *BrokerLogic) UpdateHabitat(habitat *habv1beta1.Habitat) error {
 
 // NewHabitat generates a Habitat object based on the passed params.
 func NewHabitat(name, image string, count int) *habv1beta1.Habitat {
+	groupName := "default"
+	customVersion := "v1beta2"
+
 	return &habv1beta1.Habitat{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Habitat",            //TODO: take from hab-operator
@@ -46,14 +49,17 @@ func NewHabitat(name, image string, count int) *habv1beta1.Habitat {
 			Name: name,
 		},
 		Spec: habv1beta1.HabitatSpec{
-			Image: image,
-			Count: count,
-			Service: habv1beta1.Service{
-				Group:    "default",
-				Topology: habv1beta1.TopologyStandalone,
-				Name:     name, // This should always be the habitat package name
+			V1beta2: &habv1beta1.V1beta2{
+				Image: image,
+				Count: count,
+				Service: habv1beta1.ServiceV1beta2{
+					Group:    &groupName,
+					Topology: habv1beta1.TopologyStandalone,
+					Name:     name, // This should always be the habitat package name
+				},
 			},
 		},
+		CustomVersion: &customVersion,
 	}
 }
 
