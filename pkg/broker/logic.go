@@ -242,8 +242,8 @@ func (b *BrokerLogic) createBinding(request *osb.BindRequest) error {
 			return err
 		}
 
-		hab.Kind = "Habitat"
-		hab.APIVersion = "habitat.sh/v1beta1"
+		hab.Kind = habv1beta1.HabitatKind
+		hab.APIVersion = habv1beta1.SchemeGroupVersion.String()
 		hab.Spec.V1beta2.Service.ConfigSecretName = &secret.Name
 
 		err = b.UpdateHabitat(hab)
@@ -275,8 +275,8 @@ func (b *BrokerLogic) deleteBinding(request *osb.UnbindRequest) error {
 			return fmt.Errorf("unbinding failed for %q as %q is nil", name, "configSecretName")
 		}
 
-		hab.Kind = "Habitat"
-		hab.APIVersion = "habitat.sh/v1beta1"
+		hab.Kind = habv1beta1.HabitatKind
+		hab.APIVersion = habv1beta1.SchemeGroupVersion.String()
 		hab.Spec.V1beta2.Service.ConfigSecretName = nil
 
 		err = b.UpdateHabitat(hab)
