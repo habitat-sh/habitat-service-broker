@@ -19,19 +19,19 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func (b *BrokerLogic) GetHabitat(name string) (*habv1beta1.Habitat, error) {
-	return b.Clients.HabClient.Get(name, metav1.GetOptions{})
+func (b *BrokerLogic) GetHabitat(name, namespace string) (*habv1beta1.Habitat, error) {
+	return b.Clients.HabClient.Habitats(namespace).Get(name, metav1.GetOptions{})
 }
 
 // CreateHabitat creates a Habitat resource through the Kuberentes client,
 // based on the passed Habitat object.
-func (b *BrokerLogic) CreateHabitat(habitat *habv1beta1.Habitat) error {
-	_, err := b.Clients.HabClient.Create(habitat)
+func (b *BrokerLogic) CreateHabitat(habitat *habv1beta1.Habitat, namespace string) error {
+	_, err := b.Clients.HabClient.Habitats(namespace).Create(habitat)
 	return err
 }
 
-func (b *BrokerLogic) UpdateHabitat(habitat *habv1beta1.Habitat) error {
-	_, err := b.Clients.HabClient.Update(habitat)
+func (b *BrokerLogic) UpdateHabitat(habitat *habv1beta1.Habitat, namespace string) error {
+	_, err := b.Clients.HabClient.Habitats(namespace).Update(habitat)
 	return err
 }
 
@@ -77,6 +77,6 @@ func NewHabitat(name, image string, count int) *habv1beta1.Habitat {
 }
 
 // DeleteHabitat sends a request to delete a Habitat resource.
-func (b *BrokerLogic) DeleteHabitat(habitatName string) error {
-	return b.Clients.HabClient.Delete(habitatName, nil)
+func (b *BrokerLogic) DeleteHabitat(habitatName, namespace string) error {
+	return b.Clients.HabClient.Habitats(namespace).Delete(habitatName, nil)
 }

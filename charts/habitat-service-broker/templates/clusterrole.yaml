@@ -45,5 +45,5 @@ rules:
 - apiGroups: [""]
   resources:
   - namespaces
-  verbs: ["list"]
+  verbs: ["get", "list", "create"]
 {{- end }}

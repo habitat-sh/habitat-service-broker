@@ -17,6 +17,7 @@ package broker
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -46,15 +47,121 @@ type BrokerLogic struct {
 	// Synchronize go routines.
 	sync.RWMutex
 	Clients *Clients
+
+	ConfigNamespace *v1.Namespace
+	ConfigMap       *v1.ConfigMap
 }
 
 // Clients stores all the information specfic to Kubernetes.
 type Clients struct {
 	KubeClient kubernetes.Interface
-	HabClient  habclient.HabitatInterface
+	HabClient  habclient.HabitatV1beta1Interface
 }
 
 var _ broker.Interface = &BrokerLogic{}
+
+// GetOrCreateNamespace checks if a namespace already exists by the
+// given name or else creates one. It sets the namespace object to
+// BrokerLogic.ConfigNamespace if successful or else returns the error.
+func (b *BrokerLogic) GetOrCreateNamespace(name string) error {
+	if ns, err := b.Clients.KubeClient.CoreV1().Namespaces().Get(name, metav1.GetOptions{}); err == nil {
+		b.ConfigNamespace = ns
+		return nil
+	}
+
+	namespace := &v1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+	}
+
+	ns, err := b.Clients.KubeClient.CoreV1().
+		Namespaces().
+		Create(namespace)
+	if err != nil {
+		return err
+	}
+
+	b.ConfigNamespace = ns
+	return nil
+}
+
+// GetOrCreateConfigMap checks if a configmap already exists by the
+// given name in the given namespace or else creates one. It sets the
+// configmap object to BrokerLogic.ConfigMap if successful or else
+// returns the error.
+func (b *BrokerLogic) GetOrCreateConfigMap(name, namespace string) error {
+	if cm, err := b.Clients.KubeClient.CoreV1().ConfigMaps(namespace).Get(name, metav1.GetOptions{}); err == nil {
+		b.ConfigMap = cm
+		return nil
+	}
+
+	configMap := &v1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+	}
+
+	cm, err := b.Clients.KubeClient.CoreV1().
+		ConfigMaps(namespace).
+		Create(configMap)
+	if err != nil {
+		return err
+	}
+
+	b.ConfigMap = cm
+	return nil
+}
+
+func (b *BrokerLogic) addToConfigMap(key, value string) error {
+	if b.ConfigMap.Data != nil {
+		b.ConfigMap.Data[key] = value
+	} else {
+		b.ConfigMap.Data = map[string]string{
+			key: value,
+		}
+	}
+
+	cm, err := b.Clients.KubeClient.
+		CoreV1().
+		ConfigMaps(b.ConfigMap.ObjectMeta.Namespace).
+		Update(b.ConfigMap)
+	if err != nil {
+		// Restore ConfigMap.Data to original state
+		delete(b.ConfigMap.Data, key)
+		return err
+	}
+
+	b.ConfigMap = cm
+	return nil
+}
+
+func (b *BrokerLogic) removeFromConfigMap(key string) error {
+	if b.ConfigMap.Data == nil {
+		return fmt.Errorf("config map is empty")
+	}
+
+	value, ok := b.ConfigMap.Data[key]
+	if !ok {
+		return fmt.Errorf("key %q not found in the config map", key)
+	}
+
+	delete(b.ConfigMap.Data, key)
+
+	cm, err := b.Clients.KubeClient.
+		CoreV1().
+		ConfigMaps(b.ConfigMap.ObjectMeta.Namespace).
+		Update(b.ConfigMap)
+	if err != nil {
+		// Restore ConfigMap.Data to original state
+		b.ConfigMap.Data[key] = value
+		return err
+	}
+
+	b.ConfigMap = cm
+	return nil
+}
 
 func (b *BrokerLogic) GetCatalog(c *broker.RequestContext) (*broker.CatalogResponse, error) {
 	response := &broker.CatalogResponse{
@@ -84,7 +191,12 @@ func (b *BrokerLogic) Provision(request *osb.ProvisionRequest, c *broker.Request
 		return nil, err
 	}
 
-	err = b.createHabitatResource(hab)
+	ns, err := getNamespace(request.Context)
+	if err != nil {
+		return nil, err
+	}
+
+	err = b.createHabitatResource(hab, ns, request.InstanceID)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +214,7 @@ func (b *BrokerLogic) Deprovision(request *osb.DeprovisionRequest, c *broker.Req
 		response.Async = b.async
 	}
 
-	err := b.deleteResources(request.PlanID)
+	err := b.deleteResources(request.PlanID, request.InstanceID)
 	if err != nil {
 		return nil, err
 	}
@@ -165,29 +277,55 @@ func (b *BrokerLogic) ValidateBrokerAPIVersion(version string) error {
 	return nil
 }
 
+func getNamespace(context map[string]interface{}) (string, error) {
+	namespaceInterface := context["namespace"]
+	ns, ok := namespaceInterface.(string)
+	if !ok {
+		return "", fmt.Errorf(`key "namespace" in context is not a string`)
+	}
+
+	return ns, nil
+}
+
+func getNamespaceConfigMapKey(name string) string {
+	return fmt.Sprintf("%s.namespace", name)
+}
+
 func generateHabitatObject(planID string) (*habv1beta1.Habitat, error) {
 	n, i, err := matchService(planID)
 	if err != nil {
 		return nil, err
 	}
+
 	// Generate Habitat object based on service.
 	hab := NewHabitat(n, i, 1) // TODO: Decide how many instances we should be running?
 
 	return hab, nil
 }
 
-func (b *BrokerLogic) deleteResources(planID string) error {
-	n, _, err := matchService(planID)
+func (b *BrokerLogic) deleteResources(planID, instanceID string) error {
+	name, _, err := matchService(planID)
 	if err != nil {
 		return err
 	}
 
-	err = b.DeleteHabitat(n)
+	key := getNamespaceConfigMapKey(instanceID)
+	// TODO: Should we fetch from the API instead?
+	ns, ok := b.ConfigMap.Data[key]
+	if !ok {
+		msg := fmt.Sprintf("could not find namespace for instance %s in configmap %s", instanceID, b.ConfigMap.Name)
+		return osb.HTTPStatusCodeError{
+			StatusCode:   http.StatusNotFound,
+			ErrorMessage: &msg,
+		}
+	}
+
+	err = b.DeleteHabitat(name, ns)
 	if err != nil {
 		return err
 	}
 
-	return nil
+	return b.removeFromConfigMap(key)
 }
 
 func matchService(planID string) (string, string, error) {
@@ -210,12 +348,13 @@ func matchService(planID string) (string, string, error) {
 	return name, image, nil
 }
 
-func (b *BrokerLogic) createHabitatResource(hab *habv1beta1.Habitat) error {
-	if err := b.CreateHabitat(hab); err != nil {
+func (b *BrokerLogic) createHabitatResource(hab *habv1beta1.Habitat, namespace, instanceID string) error {
+	if err := b.CreateHabitat(hab, namespace); err != nil {
 		return err
 	}
 
-	return nil
+	key := getNamespaceConfigMapKey(instanceID)
+	return b.addToConfigMap(key, namespace)
 }
 
 func (b *BrokerLogic) createBinding(request *osb.BindRequest) error {
@@ -224,20 +363,30 @@ func (b *BrokerLogic) createBinding(request *osb.BindRequest) error {
 		return err
 	}
 
+	key := getNamespaceConfigMapKey(request.InstanceID)
+	ns, ok := b.ConfigMap.Data[key]
+	if !ok {
+		msg := fmt.Sprintf("could not find namespace for instance %s in configmap %s", request.InstanceID, b.ConfigMap.Name)
+		return osb.HTTPStatusCodeError{
+			StatusCode:   http.StatusNotFound,
+			ErrorMessage: &msg,
+		}
+	}
+
 	switch name {
 	case "redis":
 		dataString := fmt.Sprintf("requirepass = %q", randSeq(10))
-		secret, err := b.createSecret("habitat-osb-redis", "user.toml", dataString)
+		secret, err := b.createSecret("habitat-osb-redis", "user.toml", dataString, ns)
 		if err != nil {
 			return err
 		}
 
-		err = b.verifySecretExists(secret.Name)
+		err = b.verifySecretExists(secret.Name, ns)
 		if err != nil {
 			return err
 		}
 
-		hab, err := b.GetHabitat(name)
+		hab, err := b.GetHabitat(name, ns)
 		if err != nil {
 			return err
 		}
@@ -246,7 +395,7 @@ func (b *BrokerLogic) createBinding(request *osb.BindRequest) error {
 		hab.APIVersion = habv1beta1.SchemeGroupVersion.String()
 		hab.Spec.V1beta2.Service.ConfigSecretName = &secret.Name
 
-		err = b.UpdateHabitat(hab)
+		err = b.UpdateHabitat(hab, ns)
 		if err != nil {
 			return err
 		}
@@ -263,7 +412,18 @@ func (b *BrokerLogic) deleteBinding(request *osb.UnbindRequest) error {
 		return fmt.Errorf("error matching service: %v", err)
 	}
 
-	hab, err := b.GetHabitat(name)
+	key := getNamespaceConfigMapKey(request.InstanceID)
+	// TODO: Should we fetch the configmap from the API instead?
+	ns, ok := b.ConfigMap.Data[key]
+	if !ok {
+		msg := fmt.Sprintf("could not find namespace for instance %s in configmap %s", request.InstanceID, b.ConfigMap.Name)
+		return osb.HTTPStatusCodeError{
+			StatusCode:   http.StatusNotFound,
+			ErrorMessage: &msg,
+		}
+	}
+
+	hab, err := b.GetHabitat(name, ns)
 	if err != nil {
 		return fmt.Errorf("error getting Habitat service: %v", err)
 	}
@@ -279,12 +439,11 @@ func (b *BrokerLogic) deleteBinding(request *osb.UnbindRequest) error {
 		hab.APIVersion = habv1beta1.SchemeGroupVersion.String()
 		hab.Spec.V1beta2.Service.ConfigSecretName = nil
 
-		err = b.UpdateHabitat(hab)
-		if err != nil {
+		if err := b.UpdateHabitat(hab, ns); err != nil {
 			return fmt.Errorf("error updating habitat: %v", err)
 		}
 
-		err := b.deleteSecret(*secretName)
+		err := b.deleteSecret(*secretName, ns)
 		if err != nil {
 			return fmt.Errorf("error deleting secret: %v", err)
 		}
@@ -295,7 +454,7 @@ func (b *BrokerLogic) deleteBinding(request *osb.UnbindRequest) error {
 	return nil
 }
 
-func (b *BrokerLogic) createSecret(secretPrefix, dataKey, dataString string) (*v1.Secret, error) {
+func (b *BrokerLogic) createSecret(secretPrefix, dataKey, dataString, namespace string) (*v1.Secret, error) {
 	s := &v1.Secret{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Secret",
@@ -321,8 +480,7 @@ func (b *BrokerLogic) createSecret(secretPrefix, dataKey, dataString string) (*v
 		s.ObjectMeta = metav1.ObjectMeta{Name: secretName}
 		s.Data = map[string][]byte{dataKey: []byte(dataString)}
 
-		// TODO: figure out how to know in which namespace to deploy.
-		secret, err := b.Clients.KubeClient.CoreV1().Secrets("default").Create(s)
+		secret, err := b.Clients.KubeClient.CoreV1().Secrets(namespace).Create(s)
 		if err == nil {
 			return secret, nil
 		}
@@ -345,7 +503,7 @@ func (b *BrokerLogic) createSecret(secretPrefix, dataKey, dataString string) (*v
 	}
 }
 
-func (b *BrokerLogic) verifySecretExists(name string) error {
+func (b *BrokerLogic) verifySecretExists(name, namespace string) error {
 	options := metav1.GetOptions{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Secret",
@@ -368,10 +526,9 @@ func (b *BrokerLogic) verifySecretExists(name string) error {
 		default:
 		}
 
-		// TODO: figure out how to know in which namespace to deploy.
 		_, err := b.Clients.KubeClient.
 			CoreV1().
-			Secrets("default").
+			Secrets(namespace).
 			Get(name, options)
 		if err == nil {
 			return nil
@@ -396,7 +553,7 @@ func (b *BrokerLogic) verifySecretExists(name string) error {
 	}
 }
 
-func (b *BrokerLogic) deleteSecret(name string) error {
+func (b *BrokerLogic) deleteSecret(name, namespace string) error {
 	options := &metav1.DeleteOptions{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Secret",
@@ -407,6 +564,6 @@ func (b *BrokerLogic) deleteSecret(name string) error {
 	// TODO: figure out how to know in which namespace to deploy.
 	return b.Clients.KubeClient.
 		CoreV1().
-		Secrets("default").
+		Secrets(namespace).
 		Delete(name, options)
 }

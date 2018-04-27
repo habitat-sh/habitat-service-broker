@@ -32,7 +32,6 @@ import (
 	"github.com/pmorie/osb-broker-lib/pkg/rest"
 	"github.com/pmorie/osb-broker-lib/pkg/server"
 	prom "github.com/prometheus/client_golang/prometheus"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -87,6 +86,14 @@ func runWithContext(ctx context.Context) error {
 
 	brokerLogic, err := broker.NewBrokerLogic(&options.Options, client)
 	if err != nil {
+		return err
+	}
+
+	if err := brokerLogic.GetOrCreateNamespace("habitat-service-broker-configuration"); err != nil {
+		return err
+	}
+
+	if err := brokerLogic.GetOrCreateConfigMap("habitat-service-broker", brokerLogic.ConfigNamespace.Name); err != nil {
 		return err
 	}
 
@@ -147,8 +154,7 @@ func setupClients() (*broker.Clients, error) {
 
 	return &broker.Clients{
 		KubeClient: apiclientset,
-		// TODO: figure out how to know in which namespace to deploy.
-		HabClient: cl.Habitats(metav1.NamespaceDefault),
+		HabClient:  cl,
 	}, nil
 
 }
