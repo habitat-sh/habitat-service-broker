@@ -28,6 +28,10 @@ clean:
 clean-all: deprovision-redis deprovision-nginx
 	helm del --purge habitat-service-broker
 
+clean-broker:
+	helm del --purge habitat-service-broker
+	kubectl delete cm habitat-service-broker -n habitat-service-broker-configuration
+
 push: image
 	$(SUDO_CMD) docker push "$(IMAGE):$(TAG)"
 
