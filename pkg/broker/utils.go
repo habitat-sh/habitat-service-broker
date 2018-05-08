@@ -42,8 +42,8 @@ func NewHabitat(name, image string, count int) *habv1beta1.Habitat {
 
 	h := habv1beta1.Habitat{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       "Habitat",            //TODO: take from hab-operator
-			APIVersion: "habitat.sh/v1beta1", //TODO: take from hab-operator
+			Kind:       habv1beta1.HabitatKind,
+			APIVersion: habv1beta1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
