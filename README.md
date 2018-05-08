@@ -1,3 +1,5 @@
+[![CircleCI](https://circleci.com/gh/kinvolk/habitat-service-broker.svg?style=svg)](https://circleci.com/gh/kinvolk/habitat-service-broker)
+
 # habitat-service-broker
 
 *Warning: This project is still under development! Should not be used in production.*
