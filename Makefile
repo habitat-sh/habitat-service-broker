@@ -13,6 +13,13 @@ build:
 test:
 	go test -v $(shell go list ./... | grep -v /vendor/ | grep -v /test/)
 
+e2e:
+	$(eval IP := $(shell kubectl config view --minify --output=jsonpath='{.clusters[0].cluster.server}' | grep --only-matching '[0-9.]\+' | head --lines 1))
+	$(eval KUBECONFIG_PATH := $(shell mktemp --tmpdir broker-e2e.XXXXXXX))
+	kubectl config view --minify --flatten > $(KUBECONFIG_PATH)
+	@if test 'x$(TESTIMAGE)' = 'x'; then echo "TESTIMAGE must be passed."; exit 1; fi
+	go test -v ./test/e2e/... --image "$(TESTIMAGE)" --kubeconfig "$(KUBECONFIG_PATH)" --ip "$(IP)"
+
 linux:
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
 	go build -o servicebroker-linux --ldflags="-s" github.com/kinvolk/habitat-service-broker/cmd/servicebroker
@@ -52,4 +59,4 @@ deprovision-redis:
 deprovision-nginx:
 	kubectl delete -f manifests/nginx
 
-.PHONY: build test linux image clean clean-all push deploy-helm provision-redis provision-nginx deprovision-redis deprovision-nginx
+.PHONY: build test linux image clean clean-all push deploy-helm provision-redis provision-nginx deprovision-redis deprovision-nginx e2e
