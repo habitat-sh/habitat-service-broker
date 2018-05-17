@@ -24,6 +24,7 @@ import (
 	"sort"
 	"syscall"
 
+	appsv1 "k8s.io/api/apps/v1"
 	appsv1beta1 "k8s.io/api/apps/v1beta1"
 	"k8s.io/api/core/v1"
 	extv1beta1 "k8s.io/api/extensions/v1beta1"
@@ -35,13 +36,13 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
-	"k8s.io/kubernetes/pkg/apis/apps"
 	api "k8s.io/kubernetes/pkg/apis/core"
 	apiv1 "k8s.io/kubernetes/pkg/apis/core/v1"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/controller/daemon"
 	deploymentutil "k8s.io/kubernetes/pkg/controller/deployment/util"
 	"k8s.io/kubernetes/pkg/controller/statefulset"
+	kapps "k8s.io/kubernetes/pkg/kubectl/apps"
 	sliceutil "k8s.io/kubernetes/pkg/kubectl/util/slice"
 	printersinternal "k8s.io/kubernetes/pkg/printers/internalversion"
 )
@@ -56,16 +57,47 @@ type Rollbacker interface {
 	Rollback(obj runtime.Object, updatedAnnotations map[string]string, toRevision int64, dryRun bool) (string, error)
 }
 
+type RollbackVisitor struct {
+	clientset kubernetes.Interface
+	result    Rollbacker
+}
+
+func (v *RollbackVisitor) VisitDeployment(elem kapps.GroupKindElement) {
+	v.result = &DeploymentRollbacker{v.clientset}
+}
+
+func (v *RollbackVisitor) VisitStatefulSet(kind kapps.GroupKindElement) {
+	v.result = &StatefulSetRollbacker{v.clientset}
+}
+
+func (v *RollbackVisitor) VisitDaemonSet(kind kapps.GroupKindElement) {
+	v.result = &DaemonSetRollbacker{v.clientset}
+}
+
+func (v *RollbackVisitor) VisitJob(kind kapps.GroupKindElement)                   {}
+func (v *RollbackVisitor) VisitPod(kind kapps.GroupKindElement)                   {}
+func (v *RollbackVisitor) VisitReplicaSet(kind kapps.GroupKindElement)            {}
+func (v *RollbackVisitor) VisitReplicationController(kind kapps.GroupKindElement) {}
+func (v *RollbackVisitor) VisitCronJob(kind kapps.GroupKindElement)               {}
+
+// RollbackerFor returns an implementation of Rollbacker interface for the given schema kind
 func RollbackerFor(kind schema.GroupKind, c kubernetes.Interface) (Rollbacker, error) {
-	switch kind {
-	case extensions.Kind("Deployment"), apps.Kind("Deployment"):
-		return &DeploymentRollbacker{c}, nil
-	case extensions.Kind("DaemonSet"), apps.Kind("DaemonSet"):
-		return &DaemonSetRollbacker{c}, nil
-	case apps.Kind("StatefulSet"):
-		return &StatefulSetRollbacker{c}, nil
+	elem := kapps.GroupKindElement(kind)
+	visitor := &RollbackVisitor{
+		clientset: c,
 	}
-	return nil, fmt.Errorf("no rollbacker has been implemented for %q", kind)
+
+	err := elem.Accept(visitor)
+
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving rollbacker for %q, %v", kind.String(), err)
+	}
+
+	if visitor.result == nil {
+		return nil, fmt.Errorf("no rollbacker has been implemented for %q", kind)
+	}
+
+	return visitor.result, nil
 }
 
 type DeploymentRollbacker struct {
@@ -276,7 +308,7 @@ func (r *StatefulSetRollbacker) Rollback(obj runtime.Object, updatedAnnotations 
 	if err != nil {
 		return "", fmt.Errorf("failed to create accessor for kind %v: %s", obj.GetObjectKind(), err.Error())
 	}
-	sts, history, err := statefulSetHistory(r.c.AppsV1beta1(), accessor.GetNamespace(), accessor.GetName())
+	sts, history, err := statefulSetHistory(r.c.AppsV1(), accessor.GetNamespace(), accessor.GetName())
 	if err != nil {
 		return "", err
 	}
@@ -284,7 +316,7 @@ func (r *StatefulSetRollbacker) Rollback(obj runtime.Object, updatedAnnotations 
 		return "", fmt.Errorf("no last revision to roll back to")
 	}
 
-	toHistory := findHistory(toRevision, history)
+	toHistory := findHistoryV1(toRevision, history)
 	if toHistory == nil {
 		return "", revisionNotFoundErr(toRevision)
 	}
@@ -307,11 +339,39 @@ func (r *StatefulSetRollbacker) Rollback(obj runtime.Object, updatedAnnotations 
 	}
 
 	// Restore revision
-	if _, err = r.c.AppsV1beta1().StatefulSets(sts.Namespace).Patch(sts.Name, types.StrategicMergePatchType, toHistory.Data.Raw); err != nil {
+	if _, err = r.c.AppsV1().StatefulSets(sts.Namespace).Patch(sts.Name, types.StrategicMergePatchType, toHistory.Data.Raw); err != nil {
 		return "", fmt.Errorf("failed restoring revision %d: %v", toRevision, err)
 	}
 
 	return rollbackSuccess, nil
+}
+
+// TODO: When all the controllers have been updated to use v1, rename this function findHistoryV1()->findHistory() and
+// TODO: remove the original findHistory()
+// findHistoryV1 returns a controllerrevision of a specific revision from the given controllerrevisions.
+// It returns nil if no such controllerrevision exists.
+// If toRevision is 0, the last previously used history is returned.
+func findHistoryV1(toRevision int64, allHistory []*appsv1.ControllerRevision) *appsv1.ControllerRevision {
+	if toRevision == 0 && len(allHistory) <= 1 {
+		return nil
+	}
+
+	// Find the history to rollback to
+	var toHistory *appsv1.ControllerRevision
+	if toRevision == 0 {
+		// If toRevision == 0, find the latest revision (2nd max)
+		sort.Sort(historiesByRevisionV1(allHistory))
+		toHistory = allHistory[len(allHistory)-2]
+	} else {
+		for _, h := range allHistory {
+			if h.Revision == toRevision {
+				// If toRevision != 0, find the history with matching revision
+				return h
+			}
+		}
+	}
+
+	return toHistory
 }
 
 // findHistory returns a controllerrevision of a specific revision from the given controllerrevisions.
@@ -362,5 +422,14 @@ type historiesByRevision []*appsv1beta1.ControllerRevision
 func (h historiesByRevision) Len() int      { return len(h) }
 func (h historiesByRevision) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
 func (h historiesByRevision) Less(i, j int) bool {
+	return h[i].Revision < h[j].Revision
+}
+
+// TODO: copied from daemon controller, should extract to a library
+type historiesByRevisionV1 []*appsv1.ControllerRevision
+
+func (h historiesByRevisionV1) Len() int      { return len(h) }
+func (h historiesByRevisionV1) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
+func (h historiesByRevisionV1) Less(i, j int) bool {
 	return h[i].Revision < h[j].Revision
 }

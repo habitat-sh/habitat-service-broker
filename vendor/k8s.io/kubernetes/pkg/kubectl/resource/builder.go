@@ -341,6 +341,10 @@ func (b *Builder) LabelSelectorParam(s string) *Builder {
 // LabelSelector accepts a selector directly and will filter the resulting list by that object.
 // Use LabelSelectorParam instead for user input.
 func (b *Builder) LabelSelector(selector string) *Builder {
+	if len(selector) == 0 {
+		return b
+	}
+
 	b.labelSelector = &selector
 	return b
 }
@@ -618,11 +622,17 @@ func (b *Builder) resourceMappings() ([]*meta.RESTMapping, error) {
 		return nil, fmt.Errorf("you may only specify a single resource type")
 	}
 	mappings := []*meta.RESTMapping{}
+	seen := map[schema.GroupVersionKind]bool{}
 	for _, r := range b.resources {
 		mapping, err := b.mappingFor(r)
 		if err != nil {
 			return nil, err
 		}
+		// This ensures the mappings for resources(shortcuts, plural) unique
+		if seen[mapping.GroupVersionKind] {
+			continue
+		}
+		seen[mapping.GroupVersionKind] = true
 
 		mappings = append(mappings, mapping)
 	}

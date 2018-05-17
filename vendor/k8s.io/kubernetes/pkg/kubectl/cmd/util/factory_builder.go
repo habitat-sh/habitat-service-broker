@@ -56,7 +56,7 @@ func (f *ring2Factory) PrinterForOptions(options *printers.PrintOptions) (printe
 	// TODO: used by the custom column implementation and the name implementation, break this dependency
 	decoders := []runtime.Decoder{f.clientAccessFactory.Decoder(true), unstructured.UnstructuredJSONScheme}
 	encoder := f.clientAccessFactory.JSONEncoder()
-	return PrinterForOptions(mapper, typer, encoder, decoders, options)
+	return printerForOptions(mapper, typer, encoder, decoders, options)
 }
 
 func (f *ring2Factory) PrinterForMapping(options *printers.PrintOptions, mapping *meta.RESTMapping) (printers.ResourcePrinter, error) {
@@ -82,8 +82,7 @@ func (f *ring2Factory) PrinterForMapping(options *printers.PrintOptions, mapping
 	return printer, nil
 }
 
-func (f *ring2Factory) PrintSuccess(mapper meta.RESTMapper, shortOutput bool, out io.Writer, resource, name string, dryRun bool, operation string) {
-	resource, _ = mapper.ResourceSingularizer(resource)
+func (f *ring2Factory) PrintSuccess(shortOutput bool, out io.Writer, resource, name string, dryRun bool, operation string) {
 	dryRunMsg := ""
 	if dryRun {
 		dryRunMsg = " (dry run)"

@@ -41,6 +41,10 @@
   name = "github.com/pmorie/osb-broker-lib"
   version = "0.0.4"
 
+[[constraint]]
+  name = "github.com/kubernetes-incubator/service-catalog"
+  version = "0.1.14"
+
 [[override]]
   name = "k8s.io/apiserver"
   version = "kubernetes-1.9.7"

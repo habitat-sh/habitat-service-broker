@@ -27,8 +27,8 @@ import (
 	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
 	"k8s.io/kubernetes/pkg/features"
 	kubelettypes "k8s.io/kubernetes/pkg/kubelet/types"
+	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 	labelsutil "k8s.io/kubernetes/pkg/util/labels"
-	"k8s.io/kubernetes/plugin/pkg/scheduler/algorithm"
 )
 
 // CreatePodTemplate returns copy of provided template with additional
@@ -102,7 +102,7 @@ func IsPodUpdated(dsTemplateGeneration int64, pod *v1.Pod, hash string) bool {
 	return hashMatches || templateMatches
 }
 
-// SplitByAvailablePods splits provided daemon set pods by availabilty
+// SplitByAvailablePods splits provided daemon set pods by availability
 func SplitByAvailablePods(minReadySeconds int32, pods []*v1.Pod) ([]*v1.Pod, []*v1.Pod) {
 	unavailablePods := []*v1.Pod{}
 	availablePods := []*v1.Pod{}

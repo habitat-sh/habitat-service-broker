@@ -20,7 +20,6 @@ package mount
 
 import (
 	"errors"
-	"os"
 )
 
 type NsenterMounter struct{}
@@ -85,16 +84,4 @@ func (*NsenterMounter) MakeFile(pathname string) error {
 
 func (*NsenterMounter) ExistsPath(pathname string) bool {
 	return true
-}
-
-func (*NsenterMounter) SafeMakeDir(pathname string, base string, perm os.FileMode) error {
-	return nil
-}
-
-func (*NsenterMounter) PrepareSafeSubpath(subPath Subpath) (newHostPath string, cleanupAction func(), err error) {
-	return subPath.Path, nil, nil
-}
-
-func (*NsenterMounter) CleanSubPaths(podDir string, volumeName string) error {
-	return nil
 }

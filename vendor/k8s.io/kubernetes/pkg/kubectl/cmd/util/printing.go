@@ -81,10 +81,10 @@ func ValidateOutputArgs(cmd *cobra.Command) error {
 	return nil
 }
 
-// PrinterForOptions returns the printer for the outputOptions (if given) or
+// printerForOptions returns the printer for the outputOptions (if given) or
 // returns the default printer for the command. Requires that printer flags have
 // been added to cmd (see AddPrinterFlags).
-func PrinterForOptions(mapper meta.RESTMapper, typer runtime.ObjectTyper, encoder runtime.Encoder, decoders []runtime.Decoder, options *printers.PrintOptions) (printers.ResourcePrinter, error) {
+func printerForOptions(mapper meta.RESTMapper, typer runtime.ObjectTyper, encoder runtime.Encoder, decoders []runtime.Decoder, options *printers.PrintOptions) (printers.ResourcePrinter, error) {
 	printer, err := printers.GetStandardPrinter(mapper, typer, encoder, decoders, *options)
 	if err != nil {
 		return nil, err
@@ -93,7 +93,7 @@ func PrinterForOptions(mapper meta.RESTMapper, typer runtime.ObjectTyper, encode
 	// we try to convert to HumanReadablePrinter, if return ok, it must be no generic
 	// we execute AddHandlers() here before maybeWrapSortingPrinter so that we don't
 	// need to convert to delegatePrinter again then invoke AddHandlers()
-	if humanReadablePrinter, ok := printer.(*printers.HumanReadablePrinter); ok {
+	if humanReadablePrinter, ok := printer.(printers.PrintHandler); ok {
 		printersinternal.AddHandlers(humanReadablePrinter)
 	}
 
@@ -222,4 +222,20 @@ func ValidResourceTypeList(f ClientAccessFactory) string {
 			* storageclasses (aka 'sc')
 	
 	`)
+}
+
+// Retrieve a list of handled resources from printer as valid args
+// TODO: This function implementation should be replaced with a real implementation from the
+//   discovery service.
+func ValidArgList(f ClientAccessFactory) []string {
+	validArgs := []string{}
+	p, err := f.Printer(nil, printers.PrintOptions{
+		ColumnLabels: []string{},
+	})
+	CheckErr(err)
+	if p != nil {
+		validArgs = p.HandledResources()
+	}
+
+	return validArgs
 }
