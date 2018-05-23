@@ -178,6 +178,21 @@
   revision = "811b1089cde9dad18d4d0c2d09fbdbf28dbd27a5"
 
 [[projects]]
+  name = "github.com/go-redis/redis"
+  packages = [
+    ".",
+    "internal",
+    "internal/consistenthash",
+    "internal/hashtag",
+    "internal/pool",
+    "internal/proto",
+    "internal/singleflight",
+    "internal/util"
+  ]
+  revision = "877867d2845fbaf86798befe410b6ceb6f5c29a3"
+  version = "v6.10.2"
+
+[[projects]]
   name = "github.com/gobwas/glob"
   packages = [
     ".",
@@ -1116,6 +1131,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "39c02fd46ccc00377ae4482da38cd2a728fc330a33fbea948ccf4e9a7904f75b"
+  inputs-digest = "5fc6f803ebf046aade38f9004cb1ab419bae634bad29c5fb6a0a334f09c2ee3d"
   solver-name = "gps-cdcl"
   solver-version = 1
