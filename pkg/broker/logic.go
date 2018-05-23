@@ -321,7 +321,7 @@ func (b *BrokerLogic) deleteResources(planID, instanceID string) error {
 	}
 
 	err = b.DeleteHabitat(name, ns)
-	if err != nil {
+	if err != nil && !k8sErrors.IsNotFound(err) {
 		return err
 	}
 
