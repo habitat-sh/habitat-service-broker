@@ -683,8 +683,8 @@
 [[projects]]
   name = "k8s.io/apiextensions-apiserver"
   packages = ["pkg/features"]
-  revision = "ce97df4801e4c2c08188f5ea3bdea37f8e3b6472"
-  version = "kubernetes-1.9.7"
+  revision = "750feebe2038bad00fdf68ba37c31f62c4f1f891"
+  version = "kubernetes-1.10.0"
 
 [[projects]]
   name = "k8s.io/apimachinery"
@@ -758,8 +758,8 @@
     "pkg/util/feature",
     "pkg/util/flag"
   ]
-  revision = "af217a9674d2396f0d63139ee604128f41a8f464"
-  version = "kubernetes-1.9.7"
+  revision = "5ae41ac86efd753e2ba012f097b83a914b268236"
+  version = "kubernetes-1.10.0"
 
 [[projects]]
   name = "k8s.io/client-go"
@@ -1131,6 +1131,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "5fc6f803ebf046aade38f9004cb1ab419bae634bad29c5fb6a0a334f09c2ee3d"
+  inputs-digest = "6e8dfdc6080c115ca1876347a9ece5f0f4128c5c01e7e21efb9f4f598588c98c"
   solver-name = "gps-cdcl"
   solver-version = 1

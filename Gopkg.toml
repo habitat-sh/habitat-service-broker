@@ -47,7 +47,7 @@
 
 [[override]]
   name = "k8s.io/apiserver"
-  version = "kubernetes-1.9.7"
+  version = "kubernetes-1.10.0"
 
 [[override]]
   name = "github.com/docker/distribution"
@@ -63,7 +63,7 @@
 
 [[override]]
   name = "k8s.io/apiextensions-apiserver"
-  version = "kubernetes-1.9.7"
+  version = "kubernetes-1.10.0"
 
 [[override]]
   name = "k8s.io/helm"
