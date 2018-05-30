@@ -186,7 +186,22 @@ func (b *BrokerLogic) Provision(request *osb.ProvisionRequest, c *broker.Request
 		response.Async = b.async
 	}
 
-	hab, err := generateHabitatObject(request.PlanID)
+	topology, err := getTopology(request.Parameters)
+	if err != nil {
+		return nil, err
+	}
+
+	group, err := getGroup(request.Parameters)
+	if err != nil {
+		return nil, err
+	}
+
+	params := habitatParameters{
+		group:    group,
+		topology: topology,
+	}
+
+	hab, err := generateHabitatObject(request.PlanID, params)
 	if err != nil {
 		return nil, err
 	}
@@ -277,6 +292,50 @@ func (b *BrokerLogic) ValidateBrokerAPIVersion(version string) error {
 	return nil
 }
 
+var topologySet = map[habv1beta1.Topology]struct{}{
+	habv1beta1.TopologyStandalone: {},
+	habv1beta1.TopologyLeader:     {},
+}
+
+type habitatParameters struct {
+	group    string
+	topology habv1beta1.Topology
+}
+
+func getTopology(params map[string]interface{}) (habv1beta1.Topology, error) {
+	t, ok := params["topology"]
+	if !ok {
+		return habv1beta1.TopologyStandalone, nil
+	}
+
+	s, ok := t.(string)
+	if !ok {
+		return habv1beta1.Topology(""), fmt.Errorf("topology %q is invalid", t)
+	}
+
+	topology := habv1beta1.Topology(s)
+	_, ok = topologySet[topology]
+	if !ok {
+		return habv1beta1.Topology(""), fmt.Errorf("topology %q is invalid", t)
+	}
+
+	return topology, nil
+}
+
+func getGroup(params map[string]interface{}) (string, error) {
+	g, ok := params["group"]
+	if !ok {
+		return "default", nil
+	}
+
+	s, ok := g.(string)
+	if !ok {
+		return "", fmt.Errorf("group %q is invalid", g)
+	}
+
+	return s, nil
+}
+
 func getNamespace(context map[string]interface{}) (string, error) {
 	namespaceInterface := context["namespace"]
 	ns, ok := namespaceInterface.(string)
@@ -291,14 +350,14 @@ func getNamespaceConfigMapKey(name string) string {
 	return fmt.Sprintf("%s.namespace", name)
 }
 
-func generateHabitatObject(planID string) (*habv1beta1.Habitat, error) {
+func generateHabitatObject(planID string, params habitatParameters) (*habv1beta1.Habitat, error) {
 	n, i, err := matchService(planID)
 	if err != nil {
 		return nil, err
 	}
 
 	// Generate Habitat object based on service.
-	hab := NewHabitat(n, i, 1) // TODO: Decide how many instances we should be running?
+	hab := NewHabitat(n, i, params)
 
 	return hab, nil
 }
