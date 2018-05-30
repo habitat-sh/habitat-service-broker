@@ -56,15 +56,11 @@ jobs:
             helm repo add habitat https://habitat-sh.github.io/habitat-operator/helm/charts/stable/
             helm install --name my-release habitat/habitat-operator
       - run:
-          name: Deploy broker
-          command: make deploy-helm
+          name: Create image
+          command: make TAG=testing image
       - run:
-          name: Create a service instance
-          command: |
-            until svcat get classes | grep nginx; do
-              sleep 1
-            done
-            kubectl apply -f manifests/redis/service-instance.yaml
+          name: E2E tests
+          command: make TESTIMAGE=kinvolk/habitat-service-broker:testing e2e
       - run:
           name: Print pods and logs
           command: |
