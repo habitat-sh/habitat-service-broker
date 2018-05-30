@@ -61,6 +61,25 @@ func nginxService() osb.Service {
 											"Grey",
 										},
 									},
+									"group": map[string]interface{}{
+										"title":   "Group",
+										"type":    "string",
+										"default": "default",
+									},
+									"topology": map[string]interface{}{
+										"title":   "Topology",
+										"type":    "string",
+										"default": "standalone",
+										"enum": []string{
+											"standalone",
+											"leader",
+										},
+									},
+									"count": map[string]interface{}{
+										"title":   "Count",
+										"type":    "int",
+										"default": "1",
+									},
 								},
 							},
 						},
@@ -111,6 +130,25 @@ func redisService() osb.Service {
 											"Beige",
 											"Grey",
 										},
+									},
+									"group": map[string]interface{}{
+										"title":   "Group",
+										"type":    "string",
+										"default": "default",
+									},
+									"topology": map[string]interface{}{
+										"title":   "Topology",
+										"type":    "string",
+										"default": "standalone",
+										"enum": []string{
+											"standalone",
+											"leader",
+										},
+									},
+									"count": map[string]interface{}{
+										"title":   "Count",
+										"type":    "int",
+										"default": "1",
 									},
 								},
 							},

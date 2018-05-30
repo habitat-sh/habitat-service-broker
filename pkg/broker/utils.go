@@ -36,8 +36,7 @@ func (b *BrokerLogic) UpdateHabitat(habitat *habv1beta1.Habitat, namespace strin
 }
 
 // NewHabitat generates a Habitat object based on the passed params.
-func NewHabitat(name, image string, count int) *habv1beta1.Habitat {
-	groupName := "default"
+func NewHabitat(name, image string, params habitatParameters) *habv1beta1.Habitat {
 	customVersion := "v1beta2"
 
 	h := habv1beta1.Habitat{
@@ -51,10 +50,10 @@ func NewHabitat(name, image string, count int) *habv1beta1.Habitat {
 		Spec: habv1beta1.HabitatSpec{
 			V1beta2: &habv1beta1.V1beta2{
 				Image: image,
-				Count: count,
+				Count: params.count,
 				Service: habv1beta1.ServiceV1beta2{
-					Group:    &groupName,
-					Topology: habv1beta1.TopologyStandalone,
+					Group:    &params.group,
+					Topology: params.topology,
 					Name:     name, // This should always be the habitat package name
 				},
 			},
