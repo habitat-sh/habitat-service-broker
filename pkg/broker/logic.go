@@ -464,18 +464,24 @@ func (b *BrokerLogic) createBinding(request *osb.BindRequest) error {
 
 	switch name {
 	case "redis":
-		dataString := fmt.Sprintf("requirepass = %q", randSeq(10))
+		password := randSeq(10)
+		dataString := fmt.Sprintf("requirepass = %q", password)
+
+		hab, err := b.GetHabitat(name, ns)
+		if err != nil {
+			return err
+		}
+
+		if hab.Spec.V1beta2.Service.Topology == habv1beta1.TopologyLeader {
+			dataString = fmt.Sprintf("%s\nmasterauth = %q", dataString, password)
+		}
+
 		secret, err := b.createSecret("habitat-osb-redis", "user.toml", dataString, ns)
 		if err != nil {
 			return err
 		}
 
 		err = b.verifySecretExists(secret.Name, ns)
-		if err != nil {
-			return err
-		}
-
-		hab, err := b.GetHabitat(name, ns)
 		if err != nil {
 			return err
 		}
