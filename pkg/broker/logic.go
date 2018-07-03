@@ -199,6 +199,9 @@ func (b *BrokerLogic) Provision(request *osb.ProvisionRequest, c *broker.Request
 	params := habitatParameters{
 		group:    group,
 		topology: topology,
+		podLabels: map[string]string{
+			"serviceInstanceID": request.InstanceID,
+		},
 	}
 
 	hab, err := generateHabitatObject(request.PlanID, params)
@@ -298,8 +301,9 @@ var topologySet = map[habv1beta1.Topology]struct{}{
 }
 
 type habitatParameters struct {
-	group    string
-	topology habv1beta1.Topology
+	group     string
+	topology  habv1beta1.Topology
+	podLabels map[string]string
 }
 
 func getTopology(params map[string]interface{}) (habv1beta1.Topology, error) {

@@ -66,6 +66,7 @@ func NewHabitat(name, image string, params habitatParameters) *habv1beta1.Habita
 					Topology: params.topology,
 					Name:     name, // This should always be the habitat package name
 				},
+				PodLabels: params.podLabels,
 			},
 		},
 		CustomVersion: &customVersion,
