@@ -68,3 +68,7 @@
 [[override]]
   name = "k8s.io/helm"
   version = "=2.8.1"
+
+[[override]]
+  name = "github.com/habitat-sh/habitat-operator"
+  revision = "daa34864"
