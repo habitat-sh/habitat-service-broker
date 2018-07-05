@@ -29,6 +29,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -186,7 +188,25 @@ func (b *BrokerLogic) Provision(request *osb.ProvisionRequest, c *broker.Request
 		response.Async = b.async
 	}
 
-	hab, err := generateHabitatObject(request.PlanID)
+	topology, err := getTopology(request.Parameters)
+	if err != nil {
+		return nil, err
+	}
+
+	group, err := getGroup(request.Parameters)
+	if err != nil {
+		return nil, err
+	}
+
+	params := habitatParameters{
+		group:    group,
+		topology: topology,
+		podLabels: map[string]string{
+			"serviceInstanceID": request.InstanceID,
+		},
+	}
+
+	hab, err := generateHabitatObject(request.PlanID, params)
 	if err != nil {
 		return nil, err
 	}
@@ -230,19 +250,59 @@ func (b *BrokerLogic) Bind(request *osb.BindRequest, c *broker.RequestContext) (
 	b.Lock()
 	defer b.Unlock()
 
+	key := getNamespaceConfigMapKey(request.InstanceID)
+	ns, ok := b.ConfigMap.Data[key]
+	if !ok {
+		msg := fmt.Sprintf("could not find namespace for instance %s in configmap %s", request.InstanceID, b.ConfigMap.Name)
+		return nil, osb.HTTPStatusCodeError{
+			StatusCode:   http.StatusNotFound,
+			ErrorMessage: &msg,
+		}
+	}
+
+	originalPods, err := b.getServiceInstancePods(request.InstanceID, ns)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(originalPods) == 0 {
+		msg := fmt.Sprintf("no pods found for ServiceInstance with ID: %q. This is unusual", request.InstanceID)
+		return nil, osb.HTTPStatusCodeError{
+			StatusCode:   http.StatusNotFound,
+			ErrorMessage: &msg,
+		}
+	}
 	response := broker.BindResponse{}
 
 	if request.AcceptsIncomplete {
 		response.Async = b.async
 	}
 
-	err := b.createBinding(request)
+	err = b.createBinding(request)
 	if err != nil {
 		return nil, err
 	}
 
-	response.Exists = true
-	return &response, nil
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	// Danger: This has the potential to be an infinite loop.
+	for {
+		select {
+		case <-ticker.C:
+			if yes, err := b.checkAllPodsUpdated(request.InstanceID, ns, originalPods); err != nil {
+				return nil, err
+			} else if yes {
+				if err := b.deleteServiceInstancePods(request.InstanceID, ns); err != nil {
+					return nil, err
+				}
+
+				response.Exists = true
+				return &response, nil
+			}
+		default:
+		}
+	}
 }
 
 func (b *BrokerLogic) Unbind(request *osb.UnbindRequest, c *broker.RequestContext) (*broker.UnbindResponse, error) {
@@ -277,6 +337,51 @@ func (b *BrokerLogic) ValidateBrokerAPIVersion(version string) error {
 	return nil
 }
 
+var topologySet = map[habv1beta1.Topology]struct{}{
+	habv1beta1.TopologyStandalone: {},
+	habv1beta1.TopologyLeader:     {},
+}
+
+type habitatParameters struct {
+	group     string
+	topology  habv1beta1.Topology
+	podLabels map[string]string
+}
+
+func getTopology(params map[string]interface{}) (habv1beta1.Topology, error) {
+	t, ok := params["topology"]
+	if !ok {
+		return habv1beta1.TopologyStandalone, nil
+	}
+
+	s, ok := t.(string)
+	if !ok {
+		return habv1beta1.Topology(""), fmt.Errorf("topology %q is invalid", t)
+	}
+
+	topology := habv1beta1.Topology(s)
+	_, ok = topologySet[topology]
+	if !ok {
+		return habv1beta1.Topology(""), fmt.Errorf("topology %q is invalid", t)
+	}
+
+	return topology, nil
+}
+
+func getGroup(params map[string]interface{}) (string, error) {
+	g, ok := params["group"]
+	if !ok {
+		return "default", nil
+	}
+
+	s, ok := g.(string)
+	if !ok {
+		return "", fmt.Errorf("group %q is invalid", g)
+	}
+
+	return s, nil
+}
+
 func getNamespace(context map[string]interface{}) (string, error) {
 	namespaceInterface := context["namespace"]
 	ns, ok := namespaceInterface.(string)
@@ -291,14 +396,14 @@ func getNamespaceConfigMapKey(name string) string {
 	return fmt.Sprintf("%s.namespace", name)
 }
 
-func generateHabitatObject(planID string) (*habv1beta1.Habitat, error) {
+func generateHabitatObject(planID string, params habitatParameters) (*habv1beta1.Habitat, error) {
 	n, i, err := matchService(planID)
 	if err != nil {
 		return nil, err
 	}
 
 	// Generate Habitat object based on service.
-	hab := NewHabitat(n, i, 1) // TODO: Decide how many instances we should be running?
+	hab := NewHabitat(n, i, params)
 
 	return hab, nil
 }
@@ -375,18 +480,24 @@ func (b *BrokerLogic) createBinding(request *osb.BindRequest) error {
 
 	switch name {
 	case "redis":
-		dataString := fmt.Sprintf("requirepass = %q", randSeq(10))
+		password := randSeq(10)
+		dataString := fmt.Sprintf("requirepass = %q", password)
+
+		hab, err := b.GetHabitat(name, ns)
+		if err != nil {
+			return err
+		}
+
+		if hab.Spec.V1beta2.Service.Topology == habv1beta1.TopologyLeader {
+			dataString = fmt.Sprintf("%s\nmasterauth = %q", dataString, password)
+		}
+
 		secret, err := b.createSecret("habitat-osb-redis", "user.toml", dataString, ns)
 		if err != nil {
 			return err
 		}
 
 		err = b.verifySecretExists(secret.Name, ns)
-		if err != nil {
-			return err
-		}
-
-		hab, err := b.GetHabitat(name, ns)
 		if err != nil {
 			return err
 		}
@@ -566,4 +677,52 @@ func (b *BrokerLogic) deleteSecret(name, namespace string) error {
 		CoreV1().
 		Secrets(namespace).
 		Delete(name, options)
+}
+
+func (b *BrokerLogic) getServiceInstancePods(instanceID, namespace string) (map[types.UID]struct{}, error) {
+	pods, err := b.Clients.KubeClient.CoreV1().Pods(namespace).List(metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	serviceInstancePods := map[types.UID]struct{}{}
+
+	for _, pod := range pods.Items {
+		if value, ok := pod.Labels["serviceInstanceID"]; ok {
+			if value == instanceID {
+				serviceInstancePods[pod.UID] = struct{}{}
+			}
+		}
+	}
+
+	return serviceInstancePods, nil
+}
+
+func (b *BrokerLogic) checkAllPodsUpdated(instanceID, namespace string, originalPods map[types.UID]struct{}) (bool, error) {
+	newPods, err := b.getServiceInstancePods(instanceID, namespace)
+	if err != nil {
+		return false, err
+	}
+
+	for uid, _ := range newPods {
+		if _, ok := originalPods[uid]; ok {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+func (b *BrokerLogic) deleteServiceInstancePods(instanceID, namespace string) error {
+	fs := fields.SelectorFromSet(fields.Set(map[string]string{
+		"serviceInstanceID": instanceID,
+	}))
+
+	listOptions := metav1.ListOptions{
+		LabelSelector: fs.String(),
+	}
+
+	return b.Clients.KubeClient.CoreV1().
+		Pods(namespace).
+		DeleteCollection(&metav1.DeleteOptions{}, listOptions)
 }

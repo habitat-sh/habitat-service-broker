@@ -298,7 +298,6 @@
   revision = "9cad4c3443a7200dd6400aef47183728de563a38"
 
 [[projects]]
-  branch = "master"
   name = "github.com/habitat-sh/habitat-operator"
   packages = [
     "pkg/apis/habitat",
@@ -306,7 +305,7 @@
     "pkg/client/clientset/versioned/scheme",
     "pkg/client/clientset/versioned/typed/habitat/v1beta1"
   ]
-  revision = "8135e9d58546268361f23e59a4046edcf05b42a7"
+  revision = "daa34864"
 
 [[projects]]
   branch = "master"
@@ -1131,6 +1130,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "6e8dfdc6080c115ca1876347a9ece5f0f4128c5c01e7e21efb9f4f598588c98c"
+  inputs-digest = "5d95bf2947b6652ec522ec72c46d4cac7e023247e017e2cbb7723117cee1b72a"
   solver-name = "gps-cdcl"
   solver-version = 1

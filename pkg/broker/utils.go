@@ -36,9 +36,18 @@ func (b *BrokerLogic) UpdateHabitat(habitat *habv1beta1.Habitat, namespace strin
 }
 
 // NewHabitat generates a Habitat object based on the passed params.
-func NewHabitat(name, image string, count int) *habv1beta1.Habitat {
-	groupName := "default"
+func NewHabitat(name, image string, params habitatParameters) *habv1beta1.Habitat {
 	customVersion := "v1beta2"
+
+	count := 1
+	if params.topology == habv1beta1.TopologyLeader {
+		// TODO: Atleast 3 instances is a requirement in the
+		// habitat-operator for running pods in the leader
+		// topology. As a result we hardcode this to 3 for
+		// now. We will make this configurable once the
+		// restriction is lifted in the operator.
+		count = 3
+	}
 
 	h := habv1beta1.Habitat{
 		TypeMeta: metav1.TypeMeta{
@@ -53,10 +62,11 @@ func NewHabitat(name, image string, count int) *habv1beta1.Habitat {
 				Image: image,
 				Count: count,
 				Service: habv1beta1.ServiceV1beta2{
-					Group:    &groupName,
-					Topology: habv1beta1.TopologyStandalone,
+					Group:    &params.group,
+					Topology: params.topology,
 					Name:     name, // This should always be the habitat package name
 				},
+				PodLabels: params.podLabels,
 			},
 		},
 		CustomVersion: &customVersion,
