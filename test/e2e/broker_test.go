@@ -25,6 +25,7 @@ import (
 	catalogv1beta1 "github.com/kubernetes-incubator/service-catalog/pkg/apis/servicecatalog/v1beta1"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
@@ -72,7 +73,10 @@ func getRedisPassword(items []v1.Secret) (string, error) {
 			if !ok {
 				continue
 			}
-			passwordParts := strings.Split(string(secretBytes), " = ")
+
+			// secret contains requirepass and masterauth configurations.
+			passwords := strings.Split(string(secretBytes), "\n")
+			passwordParts := strings.Split(passwords[0], " = ")
 			if len(passwordParts) != 2 {
 				return "", fmt.Errorf("error parsing redis password %q", string(secretBytes))
 			}
@@ -88,6 +92,68 @@ func getRedisPassword(items []v1.Secret) (string, error) {
 	}
 
 	return redisPassword, nil
+}
+
+func findRedisMasterAndSlave(t *testing.T, services []v1.Service, password string) (v1.Service, []v1.Service, error) {
+	var master v1.Service
+	var slaves []v1.Service
+
+	for _, svc := range services {
+		port := svc.Spec.Ports[0].NodePort
+
+		redisClient := redis.NewClient(&redis.Options{
+			Addr:     fmt.Sprintf("%s:%d", framework.ExternalIP, port),
+			Password: password,
+			DB:       0, // use default DB
+		})
+
+		if err := wait.Poll(time.Second, time.Minute*3, func() (bool, error) {
+
+			cmd := redisClient.Info("replication")
+			if cmd.Err() == nil {
+				// The expected prefix we are looking for in the replication info.
+				prefix := "role:"
+
+				// array of "key:value"
+				lines := strings.Split(cmd.Val(), "\n")
+				roleFound := false
+
+				for _, line := range lines {
+					// Process next line if the current line does not begin with "role".
+					if !strings.HasPrefix(line, prefix) {
+						continue
+					}
+
+					roleFound = true
+
+					// Expected value is "role:slave" or "role:master".
+					role := strings.TrimSpace(strings.TrimPrefix(line, prefix))
+					if role == "master" {
+						master = svc
+						break
+					} else if role == "slave" {
+						slaves = append(slaves, svc)
+						break
+					} else {
+						return false, fmt.Errorf("Unexpected role: %q in redis replication info", role)
+					}
+				}
+
+				if !roleFound {
+					return false, fmt.Errorf("role not found in replication info")
+				}
+
+				return true, nil
+			}
+
+			return false, nil
+		}); err != nil {
+			return master, slaves, err
+		}
+
+	}
+
+	return master, slaves, nil
 }
 
 // TestRedisStatefulset creates a service instance of the redis service,
@@ -138,13 +204,28 @@ func TestRedisStatefulset(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 3. create k8s service
-	svcEphemeral, err := utils.ConvertService("resources/provision/service.yaml")
-	if err != nil {
-		t.Fatal(err)
+	// 3. create k8s services
+	for i := 0; i <= 2; i++ {
+		manifest := fmt.Sprintf("resources/provision/service-%d.yaml", i)
+
+		svcEphemeral, err := utils.ConvertService(manifest)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := framework.KubeClient.Core().Services(utils.TestNs).Create(svcEphemeral); err != nil {
+			t.Fatal(err)
+		}
 	}
 
-	if _, err := framework.KubeClient.Core().Services(utils.TestNs).Create(svcEphemeral); err != nil {
+	ls := fields.SelectorFromSet(fields.Set(map[string]string{
+		"test": "redis",
+	}))
+
+	services, err := framework.KubeClient.Core().Services(utils.TestNs).List(metav1.ListOptions{
+		LabelSelector: ls.String(),
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -159,9 +240,14 @@ func TestRedisStatefulset(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	master, slaves, err := findRedisMasterAndSlave(t, services.Items, redisPassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// 5. login to redis
 	redisClient := redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:%d", framework.ExternalIP, 30001),
+		Addr:     fmt.Sprintf("%s:%d", framework.ExternalIP, master.Spec.Ports[0].NodePort),
 		Password: redisPassword,
 		DB:       0, // use default DB
 	})
@@ -169,7 +255,7 @@ func TestRedisStatefulset(t *testing.T) {
 	redisKey := "habitat-broker-test"
 	expectedValue := "successful"
 
-	// 6. set a value in redis
+	// 6-a. set a value in redis
 	if err := wait.Poll(time.Second, time.Minute*1, func() (bool, error) {
 		if err := redisClient.Set(redisKey, expectedValue, 0).Err(); err == nil {
 			return true, nil
@@ -183,6 +269,35 @@ func TestRedisStatefulset(t *testing.T) {
 	val, err := redisClient.Get(redisKey).Result()
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	if val != expectedValue {
+		t.Fatalf("wrong value for key %q: expected %q, found %q", redisKey, expectedValue, val)
+	}
+
+	// 6-b. retrieve the value from slaves
+	for _, svc := range slaves {
+		redisClient := redis.NewClient(&redis.Options{
+			Addr:     fmt.Sprintf("%s:%d", framework.ExternalIP, svc.Spec.Ports[0].NodePort),
+			Password: redisPassword,
+			DB:       0, // use default DB
+		})
+
+		if err := wait.Poll(time.Second, time.Minute*3, func() (bool, error) {
+			val, err := redisClient.Get(redisKey).Result()
+			if err == nil {
+				if val != expectedValue {
+					t.Fatalf("wrong value for key %q: expected %q, found %q", redisKey, expectedValue, val)
+				}
+
+				return true, nil
+			}
+
+			return false, nil
+
+		}); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// 7. unbind
@@ -224,25 +339,28 @@ func TestRedisStatefulset(t *testing.T) {
 	}
 
 	// 10. check the key set in the previous binding still has the right value
-	redisClient = redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:%d", framework.ExternalIP, 30001),
-		Password: redisPassword,
-		DB:       0, // use default DB
-	})
+	for _, svc := range services.Items {
 
-	if err := wait.Poll(time.Second, time.Minute*1, func() (bool, error) {
-		val, err = redisClient.Get(redisKey).Result()
-		if err == nil {
-			return true, nil
+		redisClient = redis.NewClient(&redis.Options{
+			Addr:     fmt.Sprintf("%s:%d", framework.ExternalIP, svc.Spec.Ports[0].NodePort),
+			Password: redisPassword,
+			DB:       0, // use default DB
+		})
+
+		if err := wait.Poll(time.Second, time.Minute*3, func() (bool, error) {
+			val, err = redisClient.Get(redisKey).Result()
+			if err == nil {
+				if val != expectedValue {
+					t.Fatalf("wrong value for key %q: expected %q, found %q", redisKey, expectedValue, val)
+				}
+
+				return true, nil
+			}
+
+			return false, nil
+		}); err != nil {
+			t.Fatal(err)
 		}
-
-		return false, nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	if val != expectedValue {
-		t.Fatalf("wrong value for key %q: expected %q, found %q", redisKey, expectedValue, val)
 	}
 
 	// 11. clean up

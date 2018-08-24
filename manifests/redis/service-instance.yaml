@@ -11,3 +11,7 @@ metadata:
 spec:
   clusterServiceClassExternalName: redis-habitat
   clusterServicePlanExternalName: default
+  parameters:
+    group: redis
+    topology: leader
+    count: 3
