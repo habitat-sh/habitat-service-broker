@@ -20,7 +20,7 @@ import (
 	"os"
 	"testing"
 
-	brokerFramework "github.com/kinvolk/habitat-service-broker/test/e2e/framework"
+	brokerFramework "github.com/habitat-sh/habitat-service-broker/test/e2e/framework"
 )
 
 var framework *brokerFramework.Framework
@@ -31,7 +31,7 @@ func TestMain(m *testing.M) {
 		code int
 	)
 
-	image := flag.String("image", "", "habitat service broker image, 'kinvolk/habitat-service-broker'")
+	image := flag.String("image", "", "habitat service broker image, 'habitat-sh/habitat-service-broker'")
 	kubeconfig := flag.String("kubeconfig", "", "path to kube config file")
 	externalIP := flag.String("ip", "", "external ip, eg. minikube ip")
 	flag.Parse()
