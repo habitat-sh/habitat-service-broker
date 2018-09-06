@@ -2,7 +2,7 @@ version: 2
 jobs:
   build:
     machine: true
-    working_directory: ~/.go_workspace/src/github.com/kinvolk/habitat-service-broker
+    working_directory: ~/.go_workspace/src/github.com/habitat-sh/habitat-service-broker
     steps:
       - checkout
       - run:
@@ -60,7 +60,7 @@ jobs:
           command: make TAG=testing image
       - run:
           name: E2E tests
-          command: make TESTIMAGE=kinvolk/habitat-service-broker:testing e2e
+          command: make TESTIMAGE=habitat-sh/habitat-service-broker:testing e2e
       - run:
           name: Print pods and logs
           command: |

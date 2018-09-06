@@ -3,12 +3,12 @@ ifdef USE_SUDO_FOR_DOCKER
 	SUDO_CMD = sudo
 endif
 
-IMAGE ?= kinvolk/habitat-service-broker
+IMAGE ?= habitat-sh/habitat-service-broker
 TAG ?= $(shell git describe --tags --always)
 PULL ?= IfNotPresent
 
 build:
-	go build -i github.com/kinvolk/habitat-service-broker/cmd/servicebroker
+	go build -i github.com/habitat-sh/habitat-service-broker/cmd/servicebroker
 
 test:
 	go test -v $(shell go list ./... | grep -v /vendor/ | grep -v /test/)
@@ -22,7 +22,7 @@ e2e:
 
 linux:
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
-	go build -o servicebroker-linux --ldflags="-s" github.com/kinvolk/habitat-service-broker/cmd/servicebroker
+	go build -o servicebroker-linux --ldflags="-s" github.com/habitat-sh/habitat-service-broker/cmd/servicebroker
 
 image: linux
 	cp servicebroker-linux image/servicebroker
