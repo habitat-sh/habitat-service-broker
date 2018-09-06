@@ -2,7 +2,7 @@ version: 2
 jobs:
   build:
     machine: true
-    working_directory: ~/.go_workspace/src/github.com/kinvolk/habitat-service-broker
+    working_directory: ~/.go_workspace/src/github.com/habitat-sh/habitat-service-broker
     steps:
       - checkout
       - run:
@@ -57,10 +57,10 @@ jobs:
             helm install --name my-release habitat/habitat-operator
       - run:
           name: Create image
-          command: make TAG=testing image
+          command: make IMAGE=testing/habitat-service-broker TAG=testing image
       - run:
           name: E2E tests
-          command: make TESTIMAGE=kinvolk/habitat-service-broker:testing e2e
+          command: make TESTIMAGE=testing/habitat-service-broker:testing e2e
       - run:
           name: Print pods and logs
           command: |
