@@ -4,72 +4,66 @@ jobs:
     machine: true
     working_directory: ~/.go_workspace/src/github.com/kinvolk/habitat-service-broker
     steps:
-      - checkout
-      - run:
-          name: Setup
-          environment:
-            K8S_VERSION: v1.10.0
-            MINIKUBE_VERSION: v0.26.1
-            HELM_VERSION: v2.9.0
-            CHANGE_MINIKUBE_NONE_USER: true
-          command: |
-            # https://github.com/kubernetes/kubernetes/issues/61058#issuecomment-372764783
-            sudo mount --make-rshared /
-            curl -Lo kubectl https://storage.googleapis.com/kubernetes-release/release/${K8S_VERSION}/bin/linux/amd64/kubectl && chmod +x kubectl && sudo mv kubectl /usr/local/bin/
-            curl -Lo minikube https://github.com/kubernetes/minikube/releases/download/${MINIKUBE_VERSION}/minikube-linux-amd64 && chmod +x minikube && sudo mv minikube /usr/local/bin/
-            curl -Lo svcat https://download.svcat.sh/cli/latest/linux/amd64/svcat && chmod +x svcat && sudo mv svcat /usr/local/bin
-            curl -Lo helm.tar.gz https://storage.googleapis.com/kubernetes-helm/helm-${HELM_VERSION}-linux-amd64.tar.gz && tar xvf helm.tar.gz && chmod +x linux-amd64/helm && sudo mv linux-amd64/helm /usr/local/bin
-            sudo minikube config set WantReportErrorPrompt false
-            # TODO: remove the --bootstrapper flag once this issue is solved: https://github.com/kubernetes/minikube/issues/2704
-            sudo -E minikube start --vm-driver=none \
-            --kubernetes-version=${K8S_VERSION} \
-            --extra-config=apiserver.Authorization.Mode=RBAC \
-            --bootstrapper=localkube
-      - run:
-          name: Wait for kubernetes to be ready
-          command: |
-            JSONPATH='{range .items[*]}{@.metadata.name}:{range @.status.conditions[*]}{@.type}={@.status};{end}{end}'
-            until kubectl get nodes -o jsonpath="$JSONPATH" 2>&1 | grep -q "Ready=True"; do
-              sleep 1
-            done
-      - run:
-          name: Fix rbac
-          command: |
-            # minikube default RBAC rules don't give admins full power, fix that
-            kubectl apply -f https://raw.githubusercontent.com/habitat-sh/habitat-operator/master/examples/rbac/minikube.yml
-      - run:
-          name: Install helm
-          command: |
-            kubectl apply -f https://raw.githubusercontent.com/Azure/helm-charts/master/docs/prerequisities/helm-rbac-config.yaml
-            helm init --service-account tiller --wait
-      - run:
-          name: Install the service catalog
-          command: |
-            helm repo add svc-cat https://svc-catalog-charts.storage.googleapis.com
-            helm upgrade --install catalog svc-cat/catalog --namespace catalog  --wait
-      - run:
-          name: Unit tests
-          command: make test
-      - run:
-          name: Deploy operator
-          command: |
-            helm repo add habitat https://habitat-sh.github.io/habitat-operator/helm/charts/stable/
-            helm install --name my-release habitat/habitat-operator
-      - run:
-          name: Create image
-          command: make TAG=testing image
-      - run:
-          name: E2E tests
-          command: make TESTIMAGE=kinvolk/habitat-service-broker:testing e2e
-      - run:
-          name: Print pods and logs
-          command: |
-            kubectl get pods --all-namespaces
-            kubectl -n=habitat-broker logs -lapp=habitat-service-broker-habitat-service-broker --tail=100
-          when: on_fail
-      # NOTE: this relies on journalctl, which is not present on the version of
-      # Ubuntu currently run by CircleCI
-      # - run:
-          # - name: print minikube logs
-          # - command: minikube logs
-          # - when: on_fail
+    - checkout
+    - run:
+        name: Setup
+        environment:
+          K8S_VERSION: v1.10.0
+          MINIKUBE_VERSION: v0.26.1
+          HELM_VERSION: v2.9.0
+          CHANGE_MINIKUBE_NONE_USER: true
+        command: |
+          # https://github.com/kubernetes/kubernetes/issues/61058#issuecomment-372764783
+          sudo mount --make-rshared /
+          curl -Lo kubectl https://storage.googleapis.com/kubernetes-release/release/${K8S_VERSION}/bin/linux/amd64/kubectl && chmod +x kubectl && sudo mv kubectl /usr/local/bin/
+          curl -Lo minikube https://github.com/kubernetes/minikube/releases/download/${MINIKUBE_VERSION}/minikube-linux-amd64 && chmod +x minikube && sudo mv minikube /usr/local/bin/
+          curl -Lo svcat https://download.svcat.sh/cli/latest/linux/amd64/svcat && chmod +x svcat && sudo mv svcat /usr/local/bin
+          curl -Lo helm.tar.gz https://storage.googleapis.com/kubernetes-helm/helm-${HELM_VERSION}-linux-amd64.tar.gz && tar xvf helm.tar.gz && chmod +x linux-amd64/helm && sudo mv linux-amd64/helm /usr/local/bin
+          sudo minikube config set WantReportErrorPrompt false
+          # TODO: remove the --bootstrapper flag once this issue is solved: https://github.com/kubernetes/minikube/issues/2704
+          sudo -E minikube start --vm-driver=none \
+          --kubernetes-version=${K8S_VERSION} \
+          --extra-config=apiserver.Authorization.Mode=RBAC \
+          --bootstrapper=localkube
+    - run:
+        name: Wait for kubernetes to be ready
+        command: |
+          JSONPATH='{range .items[*]}{@.metadata.name}:{range @.status.conditions[*]}{@.type}={@.status};{end}{end}'
+          until kubectl get nodes -o jsonpath="$JSONPATH" 2>&1 | grep -q "Ready=True"; do
+            sleep 1
+          done
+    - run:
+        name: Fix rbac
+        command: |
+          # minikube default RBAC rules don't give admins full power, fix that
+          kubectl apply -f https://raw.githubusercontent.com/habitat-sh/habitat-operator/master/examples/rbac/minikube.yml
+    - run:
+        name: Install helm
+        command: |
+          kubectl apply -f https://raw.githubusercontent.com/Azure/helm-charts/master/docs/prerequisities/helm-rbac-config.yaml
+          helm init --service-account tiller --wait
+    - run:
+        name: Install the service catalog
+        command: |
+          helm repo add svc-cat https://svc-catalog-charts.storage.googleapis.com
+          helm upgrade --install catalog svc-cat/catalog --namespace catalog  --wait
+    - run:
+        name: Unit tests
+        command: make test
+    - run:
+        name: Deploy operator
+        command: |
+          helm repo add habitat https://habitat-sh.github.io/habitat-operator/helm/charts/stable/
+          helm install --name my-release habitat/habitat-operator
+    - run:
+        name: Create image
+        command: make TAG=testing image
+    - run:
+        name: E2E tests
+        command: make TESTIMAGE=kinvolk/habitat-service-broker:testing e2e
+    - run:
+        name: Print pods and logs
+        command: |
+          kubectl get pods --all-namespaces
+          kubectl -n=habitat-broker logs -lapp=habitat-service-broker-habitat-service-broker --tail=100
+        when: on_fail
