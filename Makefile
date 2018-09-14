@@ -3,7 +3,7 @@ ifdef USE_SUDO_FOR_DOCKER
 	SUDO_CMD = sudo
 endif
 
-IMAGE ?= habitat-sh/habitat-service-broker
+IMAGE ?= habitat/habitat-service-broker
 TAG ?= $(shell git describe --tags --always)
 PULL ?= IfNotPresent
 
