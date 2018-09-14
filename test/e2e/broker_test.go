@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis"
-	utils "github.com/kinvolk/habitat-service-broker/test/e2e/framework"
+	utils "github.com/habitat-sh/habitat-service-broker/test/e2e/framework"
 	catalogv1beta1 "github.com/kubernetes-incubator/service-catalog/pkg/apis/servicecatalog/v1beta1"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

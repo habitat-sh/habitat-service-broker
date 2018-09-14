@@ -24,7 +24,7 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/kinvolk/habitat-service-broker/pkg/broker"
+	"github.com/habitat-sh/habitat-service-broker/pkg/broker"
 
 	"github.com/golang/glog"
 	habclient "github.com/habitat-sh/habitat-operator/pkg/client/clientset/versioned/typed/habitat/v1beta1"

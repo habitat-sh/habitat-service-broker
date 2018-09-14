@@ -1,0 +1,29 @@
+## Habitat-operator image
+##
+image:
+  repository: docker.io/habitat/habitat-operator
+  tag: v0.8.0
+  pullPolicy: IfNotPresent
+
+## Node labels for habitat-operator pod assignment
+##
+nodeSelector: {}
+
+## If true, create & use RBAC resources
+##
+rbacEnable: true
+
+## Decide if habitat-operator runs at cluster or namespaced scope
+operatorNamespaced: false
+namespace: habitat-operator
+
+## Habitat-operator resource limits & requests
+## Ref: https://kubernetes.io/docs/user-guide/compute-resources/
+##
+resources: {}
+  # limits:
+  #   cpu: 200m
+  #   memory: 100Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 50Mi

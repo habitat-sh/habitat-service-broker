@@ -2,7 +2,7 @@ version: 2
 jobs:
   build:
     machine: true
-    working_directory: ~/.go_workspace/src/github.com/kinvolk/habitat-service-broker
+    working_directory: ~/.go_workspace/src/github.com/habitat-sh/habitat-service-broker
     steps:
       - checkout
       - run:
@@ -54,7 +54,7 @@ jobs:
           name: Deploy operator
           command: |
             helm repo add habitat https://habitat-sh.github.io/habitat-operator/helm/charts/stable/
-            helm install --name my-release habitat/habitat-operator
+            helm install --name my-release --values manifests/habitat-operator/values.yaml habitat/habitat-operator
       - run:
           name: Create image
           command: make TAG=testing image

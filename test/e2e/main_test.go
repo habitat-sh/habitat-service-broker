@@ -20,7 +20,7 @@ import (
 	"os"
 	"testing"
 
-	brokerFramework "github.com/kinvolk/habitat-service-broker/test/e2e/framework"
+	brokerFramework "github.com/habitat-sh/habitat-service-broker/test/e2e/framework"
 )
 
 var framework *brokerFramework.Framework
