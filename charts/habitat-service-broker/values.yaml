@@ -1,6 +1,6 @@
-# Default values for the habitat-broker 
+# Default values for the habitat-broker
 # Image to use
-image: kinvolk/habitat-service-broker:latest 
+image: habitat/habitat-service-broker:latest
 # ImagePullPolicy; valid values are "IfNotPresent", "Never", and "Always"
 imagePullPolicy: Always
 # Certificate details to use for TLS. Leave blank to not use TLS
