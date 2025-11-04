@@ -51,3 +51,7 @@ To remove the running instance:
 ```console 
   make deprovision-redis
 ```
+
+# Copyright
+
+See [COPYRIGHT.md](./COPYRIGHT.md).
